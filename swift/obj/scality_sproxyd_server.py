@@ -39,7 +39,7 @@ class ObjectController(server.ObjectController):
         :param conf: WSGI configuration parameter
         """
         self.logger = logger or get_logger(conf, log_route='object-server')
-        self._filesystem = ScalitySproxydFileSystem(conf, logger)
+        self._filesystem = ScalitySproxydFileSystem(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
                      **kwargs):
@@ -51,8 +51,6 @@ class ObjectController(server.ObjectController):
         DiskFile class would simply over-ride this method to provide that
         behavior.
         """
-        #print "device=" + device + " partition=" + partition + " account=" + account + " container=" + container + " obj=" + obj
-
         return self._filesystem.get_diskfile(account, container, obj, **kwargs)
 
     def async_update(self, op, account, container, obj, host, partition,

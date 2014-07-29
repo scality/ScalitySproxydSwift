@@ -15,190 +15,128 @@
 
 """ Sproxyd Disk File Interface for Swift Object Server"""
 
-import cStringIO
-import time
 import hashlib
 import httplib
-from contextlib import contextmanager
-import eventlet
 import pickle
 import base64
-
-from swift.common.utils import normalize_timestamp
-from swift.common.exceptions import DiskFileQuarantined, DiskFileNotExist, \
-    DiskFileCollision, DiskFileDeleted, DiskFileNotOpen
+from eventlet.timeout import Timeout
+from swift.common.bufferedhttp import http_connect_raw
+from swift.common.exceptions import ChunkReadTimeout, \
+    ChunkWriteTimeout, ConnectionTimeout, \
+    DiskFileQuarantined, DiskFileNotExist, \
+    DiskFileDeleted, DiskFileNotOpen
+from contextlib import contextmanager
 from swift.common.swob import multi_range_iterator
+
+class SproxydException(Exception):
+    """
+    Sproxyd Exception
+    """
+    pass
 
 class ScalitySproxydFileSystem(object):
     """
     A sproxyd file system scheme.
-
-    blah
     """
 
+    def debugprint(self, level, msg):
+        """
+        debug print
+        """
+        #if level < 3:
+        #    self._logger.error(msg)
+
     def __init__(self, conf, logger):
-        self.logger = logger
-        self.debug_level = int(conf.get('debug_level', 0))
-        #self.debug_level = 2
-        self.path = conf.get('path', '/proxy/local')
-        host = conf.get('host', 'localhost:81')
-        self.hosts = []
-        if "," in host:
-                self.hosts = host.split(",")
-                random.shuffle(self.hosts)
+        self._logger = logger
+        self.conn_timeout = int(conf.get('conn_timeout', 10))
+        self.ipaddr = '127.0.0.1'
+        self.port = 81
+        self.path = conf.get('path', '/proxy/chord')
+
+    def get_meta(self, name):
+        """
+        Open a connection and get usermd"
+        """
+        self.debugprint(1, "HEAD " + self.path + "/" + name)
+        try:
+            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
+            metadata = None
+            headers = {}
+            conn.request("HEAD", self.path + "/" + name, headers=headers)
+            resp = conn.getresponse()
+            if resp.status == 200:
+                headers = dict(resp.getheaders())
+                usermd = base64.b64decode(headers["x-scal-usermd"])
+                metadata = pickle.loads(usermd)
+        except httplib.HTTPException as err:
+            return None
+        #except EOFError as err:
+        #    print "EOFError"
+        #    return None
         else:
-            self.hosts.append(host)
-
-        self._filesystem = {}
-
-    def get_object_meta(self, name):
-        headers = {}
-
-        if self.debug_level > 0:
-            print "HEAD " + self.path + "/" + name
-
-        conn = httplib.HTTPConnection(self.hosts[0])
-
-        metadata = None
-
-        nb = 0
-        ntries = 0
-        while ntries <= nb:
-            try:
-                conn.request("HEAD", self.path + "/" + name, headers=headers)
-                resp = conn.getresponse()
-                if resp.status == 200:
-                    headers = dict(resp.getheaders())
-                    usermd = base64.b64decode(headers["x-scal-usermd"])
-                    metadata = pickle.loads(usermd)
-                    break
-            except httplib.HTTPException as err:
-                return None
-            else:
-                if resp.status == 500:
-                    if self.debug_level > 0:
-                        msg = resp.read()
-                        print "failure " + str(msg)
-                        time.sleep(1 + ntries)
-                        ntries += 1
-                        continue
-                    if ntries > nb:
-                        raise SPROXYDException("cannot get metadata, response code is %s / error is %s" % (
-                                str(resp.status), str(msg)))        
+            if resp.status == 500:
+                msg = resp.read()
+                raise SproxydException("getting metadata: %s / %s" % 
+                                       (str(resp.status), str(msg)))        
+        finally:
+            conn.close()
         return metadata
 
-    def get_object(self, name):
-        headers = {}
-
-        if self.debug_level > 0:
-            print "GET " + self.path + "/" + name
-
-        conn = httplib.HTTPConnection(self.hosts[0])
-
-        metadata = None
-
-        nb = 0
-        ntries = 0
-        while ntries <= nb:
-            try:
-                conn.request("GET", self.path + "/" + name, headers=headers)
-                resp = conn.getresponse()
-                if resp.status == 200:
-                    data = cStringIO.StringIO(resp.read())
-                    headers = dict(resp.getheaders())
-                    usermd = base64.b64decode(headers["x-scal-usermd"])
-                    metadata = pickle.loads(usermd)
-                    break
-            except httplib.HTTPException as err:
-                return None, None
-            else:
-                if resp.status == 500:
-                    if self.debug_level > 0:
-                        msg = resp.read()
-                        print "failure " + str(msg)
-                        time.sleep(1 + ntries)
-                        ntries += 1
-                        continue
-                    if ntries > nb:
-                        raise SPROXYDException("cannot get data, response code is %s / error is %s" % (
-                                str(resp.status), str(msg)))        
-        return data, metadata
-
-    def put_object(self, name, data, data_len, metadata):
-        headers = {}
-
-        if self.debug_level > 0:
-            print "PUT " + self.path + "/" + name
-
-        conn = httplib.HTTPConnection(self.hosts[0])
-        #conn.set_debuglevel(10);
-
-        if data is None and metadata is None:
-                raise SPROXYDException("no usermd and no fd")
-
-        if data is not None:
-            headers['Content-Length'] = data_len
-
-        if metadata is not None:
+    def put_meta(self, name, metadata):
+        """
+        Connect to sproxyd and put usermd
+        """
+        self.debugprint(1, "PUT_meta " + self.path + "/" + name)
+        if metadata is None:
+            raise SproxydException("no usermd")
+        try:
+            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
+            headers = {}
+            headers["x-scal-cmd"] = "update-usermd"
             usermd = pickle.dumps(metadata)
             headers["x-scal-usermd"] = base64.b64encode(usermd)
-
-        nb = 0
-        ntries = 0
-        while ntries <= nb:
-            try:
-                conn.request("PUT", self.path + "/" + name, body=data.getvalue(), headers=headers)
-                resp = conn.getresponse()
-                if resp.status == 200:
-                    resp.read()
-                    break
-            except httplib.HTTPException as err:
-                raise err
-            else:
-                if resp.status == 500:
-                    if self.debug_level > 0:
-                        print "PUT: Retrying following the error %s / sleep for %s sec before retrying \n" % (resp.status , (1 + ntries))
-                        msg = resp.read()
-                        time.sleep(1 + ntries)
-                        ntries += 1
-                        continue
-                    if ntries > nb:
-                        raise SPROXYDException("cannot put data, response code is %s / error is %s" % (
-                                str(resp.status), str(msg)))        
+            conn.request("PUT", self.path + "/" + name,
+                         body="", headers=headers)
+            resp = conn.getresponse()
+            if resp.status == 200:
+                resp.read()
+        except httplib.HTTPException as err:
+            raise err
+        else:
+            if resp.status == 500:
+                msg = resp.read()
+                raise SproxydException("putting metadata: %s / %s" % (
+                        str(resp.status), str(msg)))        
+        finally:
+            conn.close()
 
     def del_object(self, name):
-        headers = {}
-
-        if self.debug_level > 0:
-            print "DELETE " + self.path + "/" + name
-
-        conn = httplib.HTTPConnection(self.hosts[0])
-        #conn.set_debuglevel(10);
-
-        nb = 0
-        ntries = 0
-        while ntries <= nb:
-            try:
-                conn.request("DELETE", self.path + "/" + name, headers=headers)
-                resp = conn.getresponse()
-                if resp.status == 200:
-                    resp.read()
-                    break
-            except httplib.HTTPException as err:
-                raise err
-            else:
-                if resp.status == 500:
-                    if self.debug_level > 0:
-                        print "PUT: Retrying following the error %s / sleep for %s sec before retrying \n" % (resp.status , (1 + ntries))
-                        msg = resp.read()
-                        time.sleep(1 + ntries)
-                        ntries += 1
-                        continue
-                    if ntries > nb:
-                        raise SPROXYDException("cannot put data, response code is %s / error is %s" % (
-                                str(resp.status), str(msg)))        
+        """
+        Connect to sproxyd and delete object
+        """
+        self.debugprint(1, "DELETE " + self.path + "/" + name)
+        try:
+            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
+            headers = {}
+            conn.request("DELETE", self.path + "/" + name, headers=headers)
+            resp = conn.getresponse()
+            if resp.status == 200:
+                resp.read()
+        except httplib.HTTPException as err:
+            raise err
+        else:
+            if resp.status == 500:
+                msg = resp.read()
+                raise SproxydException("deleting object: %s / %s" % (
+                        str(resp.status), str(msg)))        
+        finally:
+            conn.close()
 
     def get_diskfile(self, account, container, obj, **kwargs):
+        """
+        Get a diskfile
+        """
+        self.debugprint(1, "get_diskfile")
         return DiskFile(self, account, container, obj)
 
 
@@ -210,36 +148,54 @@ class DiskFileWriter(object):
     requests. Serves as the context manager object for DiskFile's create()
     method.
 
-    :param fs: internal file system object to use
+    :param filesystem: internal file system object to use
     :param name: standard object name
-    :param fp: `StringIO` in-memory representation object
     """
-    def __init__(self, fs, name, fp):
-        self._filesystem = fs
+    def __init__(self, filesystem, name):
+        self._filesystem = filesystem
         self._name = name
-        self._fp = fp
         self._upload_size = 0
+        headers = {}
+        headers['transfer-encoding'] = "chunked"
+        self._filesystem.debugprint(1, "PUT stream " + 
+                                    filesystem.path + "/" + name)
+        try:
+            with ConnectionTimeout(filesystem.conn_timeout):
+                self._conn = http_connect_raw(
+                    filesystem.ipaddr, filesystem.port, 'PUT',
+                    filesystem.path + "/" + name, headers, None, False)
+        except (Exception, Timeout) as err:
+            raise err
 
     def write(self, chunk):
         """
-        Write a chunk of data into the `StringIO` object.
+        Write a chunk of data
 
         :param chunk: the chunk of data to write as a string object
         """
-        self._fp.write(chunk)
+        self._filesystem.debugprint(2, "writing")
+        self._conn.send('%x\r\n%s\r\n' % (len(chunk), chunk))
         self._upload_size += len(chunk)
         return self._upload_size
 
     def put(self, metadata):
         """
-        Make the final association in the in-memory file system for this name
-        with the `StringIO` object.
+        Make the final association
 
         :param metadata: dictionary of metadata to be written
         :param extension: extension to be used when making the file
         """
+        self._conn.send('0\r\n\r\n')
+        self._filesystem.debugprint(2, "write closing")
+        if self._conn:
+            resp = self._conn.getresponse()
+            if resp.status != 200:
+                msg = resp.read()
+                raise SproxydException("putting: %s / %s" % (
+                        str(resp.status), str(msg)))        
+            self._conn.close()
         metadata['name'] = self._name
-        self._filesystem.put_object(self._name, self._fp, self._upload_size, metadata)
+        self._filesystem.put_meta(self._name, metadata)
 
 
 class DiskFileReader(object):
@@ -250,68 +206,83 @@ class DiskFileReader(object):
     requests. Serves as the context manager object for DiskFile's reader()
     method.
 
+    :param filesystem: internal file system object to use
     :param name: object name
-    :param fp: open file object pointer reference
     :param obj_size: on-disk size of object in bytes
     :param etag: MD5 hash of object from metadata
     """
-    def __init__(self, name, fp, obj_size, etag):
+    def __init__(self, filesystem, name, obj_size, etag):
+        self._filesystem = filesystem
         self._name = name
-        self._fp = fp
         self._obj_size = obj_size
         self._etag = etag
         #
-        self._iter_etag = None
+        self._iter_etag = hashlib.md5()
         self._bytes_read = 0
-        self._started_at_0 = False
-        self._read_to_eof = False
         self._suppress_file_closing = False
         #
-        self.was_quarantined = ''
+        self._filesystem.debugprint(1, "GET stream " + 
+                                    filesystem.path + "/" + name)
+        self._conn = None
 
-    def __iter__(self):
+    def stream(self, resp):
+        """
+        stream input
+        """
         try:
             self._bytes_read = 0
-            self._started_at_0 = False
-            self._read_to_eof = False
-            if self._fp.tell() == 0:
-                self._started_at_0 = True
-                self._iter_etag = hashlib.md5()
             while True:
-                chunk = self._fp.read()
+                self._filesystem.debugprint(2, "reading")
+                chunk = resp.read(4096)
                 if chunk:
                     if self._iter_etag:
                         self._iter_etag.update(chunk)
                     self._bytes_read += len(chunk)
                     yield chunk
                 else:
-                    self._read_to_eof = True
+                    self._filesystem.debugprint(2, "eof")
                     break
         finally:
             if not self._suppress_file_closing:
                 self.close()
 
-    def app_iter_range(self, start, stop):
-        if start or start == 0:
-            self._fp.seek(start)
-        if stop is not None:
-            length = stop - start
-        else:
-            length = None
+    def __iter__(self):
+        self._filesystem.debugprint(2, "__iter__")
+        headers = {}
         try:
-            for chunk in self:
-                if length is not None:
-                    length -= len(chunk)
-                    if length < 0:
-                        # Chop off the extra:
-                        yield chunk[:length]
-                        break
-                yield chunk
-        finally:
-            if not self._suppress_file_closing:
-                self.close()
+            with ConnectionTimeout(self._filesystem.conn_timeout):
+                self._conn = http_connect_raw(
+                    self._filesystem.ipaddr, self._filesystem.port, 'GET',
+                    self._filesystem.path + "/" + self._name, headers, None, False)
+        except (Exception, Timeout) as err:
+            raise err
+        resp = self._conn.getresponse()
+        for chunk in self.stream(resp):
+            yield chunk
+
+    def app_iter_range(self, start, stop):
+        """
+        iterate over a range
+        """
+        self._filesystem.debugprint(1, "app_iter_range")
+        headers = {}
+        headers["range"] = "bytes=" + str(start) + "-" + str(stop)
+        try:
+            with ConnectionTimeout(self._filesystem.conn_timeout):
+                self._conn = http_connect_raw(
+                    self._filesystem.ipaddr, self._filesystem.port, 'GET',
+                    self._filesystem.path + "/" + self._name, headers, None, False)
+        except (Exception, Timeout) as err:
+            raise err
+        resp = self._conn.getresponse()
+        for chunk in self.stream(resp):
+            yield chunk
 
     def app_iter_ranges(self, ranges, content_type, boundary, size):
+        """
+        iterate over multiple ranges
+        """
+        self._filesystem.debugprint(1, "app_iter_ranges")
         if not ranges:
             yield ''
         else:
@@ -328,33 +299,14 @@ class DiskFileReader(object):
                 except DiskFileQuarantined:
                     pass
 
-    def _quarantine(self, msg):
-        self.was_quarantined = msg
-
-    def _handle_close_quarantine(self):
-        if self._bytes_read != self._obj_size:
-            self._quarantine(
-                "Bytes read: %s, does not match metadata: %s" % (
-                    self.bytes_read, self._obj_size))
-        elif self._iter_etag and \
-                self._etag != self._iter_etag.hexdigest():
-            self._quarantine(
-                "ETag %s and file's md5 %s do not match" % (
-                    self._etag, self._iter_etag.hexdigest()))
-
     def close(self):
         """
         Close the file. Will handle quarantining file if necessary.
         """
-        if self._fp:
-            try:
-                if self._started_at_0 and self._read_to_eof:
-                    self._handle_close_quarantine()
-            except (Exception, Timeout):
-                pass
-            finally:
-                self._fp = None
-
+        self._filesystem.debugprint(2, "read closing")
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
 class DiskFile(object):
     """
@@ -370,11 +322,10 @@ class DiskFile(object):
     :param keep_cache: caller's preference for keeping data read in the cache
     """
 
-    def __init__(self, fs, account, container, obj):
+    def __init__(self, filesystem, account, container, obj):
         self._name = '/' + '/'.join((account, container, obj))
         self._metadata = None
-        self._fp = None
-        self._filesystem = fs
+        self._filesystem = filesystem
 
     def open(self):
         """
@@ -387,15 +338,17 @@ class DiskFile(object):
         :raises DiskFileQuarantined: if while reading metadata of the file
                                      some data did pass cross checks
         """
-        fp, self._metadata = self._filesystem.get_object(self._name)
-        if fp is None:
+        metadata = self._filesystem.get_meta(self._name)
+        if metadata is None:
             raise DiskFileDeleted()
-        self._fp = self._verify_data_file(fp)
-        self._metadata = self._metadata or {}
+        self._metadata = metadata or {}
         return self
 
     def open_meta(self):
-        metadata = self._filesystem.get_object_meta(self._name)
+        """
+        get the metadata from sproxyd
+        """
+        metadata = self._filesystem.get_meta(self._name)
         if metadata is None:
             raise DiskFileDeleted()
         self._metadata = metadata or {}
@@ -407,66 +360,8 @@ class DiskFile(object):
         return self
 
     def __exit__(self, t, v, tb):
-        if self._fp is not None:
-            self._fp = None
-
-    def _verify_data_file(self, fp):
         """
-        Verify the metadata's name value matches what we think the object is
-        named.
-
-        :raises DiskFileCollision: if the metadata stored name does not match
-                                   the referenced name of the file
-        :raises DiskFileNotExist: if the object has expired
-        :raises DiskFileQuarantined: if data inconsistencies were detected
-                                     between the metadata and the file-system
-                                     metadata
         """
-        try:
-            mname = self._metadata['name']
-        except KeyError:
-            raise self._quarantine(self._name, "missing name metadata")
-        else:
-            if mname != self._name:
-                raise DiskFileCollision('Client path does not match path '
-                                        'stored in object metadata')
-        try:
-            x_delete_at = int(self._metadata['X-Delete-At'])
-        except KeyError:
-            pass
-        except ValueError:
-            # Quarantine, the x-delete-at key is present but not an
-            # integer.
-            raise self._quarantine(
-                self._name, "bad metadata x-delete-at value %s" % (
-                    self._metadata['X-Delete-At']))
-        else:
-            if x_delete_at <= time.time():
-                raise DiskFileNotExist('Expired')
-        try:
-            metadata_size = int(self._metadata['Content-Length'])
-        except KeyError:
-            raise self._quarantine(
-                self._name, "missing content-length in metadata")
-        except ValueError:
-            # Quarantine, the content-length key is present but not an
-            # integer.
-            raise self._quarantine(
-                self._name, "bad metadata content-length value %s" % (
-                    self._metadata['Content-Length']))
-        try:
-            fp.seek(0, 2)
-            obj_size = fp.tell()
-            fp.seek(0, 0)
-        except OSError as err:
-            # Quarantine, we can't successfully stat the file.
-            raise self._quarantine(self._name, "not stat-able: %s" % err)
-        if obj_size != metadata_size:
-            raise self._quarantine(
-                self._name, "metadata content-length %s does"
-                " not match actual object size %s" % (
-                    metadata_size, obj_size))
-        return fp
 
     def get_metadata(self):
         """
@@ -495,12 +390,11 @@ class DiskFile(object):
 
         :param keep_cache:
         """
-        dr = DiskFileReader(self._name, self._fp,
+        dr = DiskFileReader(self._filesystem, self._name, 
                             int(self._metadata['Content-Length']),
                             self._metadata['ETag'])
         # At this point the reader object is now responsible for
         # the file pointer.
-        self._fp = None
         return dr
 
     @contextmanager
@@ -513,19 +407,13 @@ class DiskFile(object):
                      disk
         :raises DiskFileNoSpace: if a size is specified and allocation fails
         """
-        fp = cStringIO.StringIO()
-        try:
-            yield DiskFileWriter(self._filesystem, self._name, fp)
-        finally:
-            del fp
+        yield DiskFileWriter(self._filesystem, self._name)
 
     def write_metadata(self, metadata):
         """
         Write a block of metadata to an object.
         """
-        cur_fp = self._filesystem.get(self._name)
-        if cur_fp is not None:
-            self._filesystem[self._name] = (cur_fp, metadata)
+        self._filesystem.put_meta(self._name, metadata)
 
     def delete(self, timestamp):
         """
@@ -538,7 +426,4 @@ class DiskFile(object):
 
         :param timestamp: timestamp to compare with each file
         """
-        timestamp = normalize_timestamp(timestamp)
-        fp, md = self._filesystem.get_object(self._name)
-        if md['X-Timestamp'] < timestamp:
-            self._filesystem.del_object(self._name)
+        self._filesystem.del_object(self._name)
