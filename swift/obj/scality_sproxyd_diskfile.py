@@ -24,15 +24,38 @@ from swift.common.bufferedhttp import http_connect_raw
 from swift.common.exceptions import ChunkReadTimeout, \
     ChunkWriteTimeout, ConnectionTimeout, \
     DiskFileQuarantined, DiskFileNotExist, \
-    DiskFileDeleted, DiskFileNotOpen
+    DiskFileDeleted, DiskFileNotOpen, \
+    DiskFileError
 from contextlib import contextmanager
 from swift.common.swob import multi_range_iterator
 
-class SproxydException(Exception):
+class SproxydException(DiskFileError):
     """
     Sproxyd Exception
     """
-    pass
+    def __init__(self, msg, ipaddr='', port=0, path='', 
+                 http_status=0, http_reason=''):
+        Exception.__init__(self, msg)
+        self.msg = msg
+        self.ipaddr = ipaddr
+        self.port = port
+        self.path = path
+        self.http_status = http_status
+        self.http_reason = http_reason
+
+    def __str__(self):
+        if self.ipaddr:
+            self.msg += ' %s' % self.ipaddr
+        if self.port:
+            self.msg += ':%d' % self.port
+        if self.path:
+            self.msg += '%s' % self.path
+        if self.http_status:
+            self.msg += ' %d' % self.http_status
+        if self.http_reason:
+            self.msg += ' %s' % self.http_reason
+        return self.msg
+
 
 class ScalitySproxydFileSystem(object):
     """
@@ -43,43 +66,83 @@ class ScalitySproxydFileSystem(object):
         """
         debug print
         """
-        #if level < 3:
-        #    self._logger.error(msg)
+        #self._logger.debug(msg)
+#       print msg
+        pass
 
     def __init__(self, conf, logger):
         self._logger = logger
         self.conn_timeout = int(conf.get('conn_timeout', 10))
-        self.ipaddr = '127.0.0.1'
-        self.port = 81
+        self.proxy_timeout = int(conf.get('proxy_timeout', 3))
+        host = conf.get('host', 'localhost:81')
+        self.hosts = []
+        if "," in host:
+            self.hosts = host.split(",")
+            random.shuffle(self.hosts)
+        else:
+            self.hosts.append(host)
+        self.host_index = 0
         self.path = conf.get('path', '/proxy/chord')
+
+    def do_connect(self, ipaddr, port, method, path, headers=None,
+                   query_string=None, ssl=False):
+        """
+        stubable function for connecting
+        """
+        conn = http_connect_raw(
+            ipaddr, port, method,
+            path, headers, query_string, ssl)
+        return conn
+
+    def conn_getresponse(self, conn):
+        """
+        stubable function for getting conn responses
+        """
+        return conn.getresponse()
+
+    def get_next_host(self):
+        host = self.hosts[self.host_index % len(self.hosts)]
+        #XXX shall be a lock there
+        self.host_index = self.host_index + 1
+        couple = host.split(':')
+        return couple[0],couple[1]
 
     def get_meta(self, name):
         """
         Open a connection and get usermd"
         """
         self.debugprint(1, "HEAD " + self.path + "/" + name)
+        headers = {}
+        conn = None
         try:
-            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
-            metadata = None
-            headers = {}
-            conn.request("HEAD", self.path + "/" + name, headers=headers)
-            resp = conn.getresponse()
-            if resp.status == 200:
-                headers = dict(resp.getheaders())
-                usermd = base64.b64decode(headers["x-scal-usermd"])
-                metadata = pickle.loads(usermd)
-        except httplib.HTTPException as err:
+            with ConnectionTimeout(self.conn_timeout):
+                (ipaddr, port) = self.get_next_host()
+                conn = self.do_connect(
+                    ipaddr, port, 'HEAD',
+                    self.path + "/" + name, headers, None, False)
+            with Timeout(self.proxy_timeout):
+                resp = self.conn_getresponse(conn)
+                if resp.status == 200:
+                    headers = dict(resp.getheaders())
+                    usermd = base64.b64decode(headers["x-scal-usermd"])
+                    metadata = pickle.loads(usermd)
+                elif resp.status == 404:
+                    metadata = None
+                else:
+                    msg = resp.read()
+                    raise SproxydException(
+                        'get_meta: %s' % msg, 
+                        ipaddr=ipaddr, port=port,
+                        path=self.path, http_status=resp.status,
+                        http_reason=resp.reason)
+        except (EOFError) as err:
+            print "EOFError"
             return None
-        #except EOFError as err:
-        #    print "EOFError"
-        #    return None
-        else:
-            if resp.status == 500:
-                msg = resp.read()
-                raise SproxydException("getting metadata: %s / %s" % 
-                                       (str(resp.status), str(msg)))        
+        except (Exception, Timeout) as err:
+            raise err
         finally:
-            conn.close()
+            if conn:
+                conn.close()
         return metadata
 
     def put_meta(self, name, metadata):
@@ -89,48 +152,63 @@ class ScalitySproxydFileSystem(object):
         self.debugprint(1, "PUT_meta " + self.path + "/" + name)
         if metadata is None:
             raise SproxydException("no usermd")
+        headers = {}
+        headers["x-scal-cmd"] = "update-usermd"
+        usermd = pickle.dumps(metadata)
+        headers["x-scal-usermd"] = base64.b64encode(usermd)
+        conn = None
         try:
-            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
-            headers = {}
-            headers["x-scal-cmd"] = "update-usermd"
-            usermd = pickle.dumps(metadata)
-            headers["x-scal-usermd"] = base64.b64encode(usermd)
-            conn.request("PUT", self.path + "/" + name,
-                         body="", headers=headers)
-            resp = conn.getresponse()
-            if resp.status == 200:
-                resp.read()
-        except httplib.HTTPException as err:
+            with ConnectionTimeout(self.conn_timeout):
+                (ipaddr, port) = self.get_next_host()
+                conn = self.do_connect(
+                    ipaddr, port, 'PUT',
+                    self.path + "/" + name, headers, None, False)
+            with Timeout(self.proxy_timeout):
+                resp = self.conn_getresponse(conn)
+                if resp.status == 200:
+                    resp.read()
+                elif resp.status == 500:
+                    msg = resp.read()
+                    raise SproxydException(
+                        'put_meta: %s' % msg, 
+                        ipaddr=ipaddr, port=port,
+                        path=self.path, http_status=resp.status,
+                        http_reason=resp.reason)
+        except (Exception, Timeout) as err:
             raise err
-        else:
-            if resp.status == 500:
-                msg = resp.read()
-                raise SproxydException("putting metadata: %s / %s" % (
-                        str(resp.status), str(msg)))        
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def del_object(self, name):
         """
         Connect to sproxyd and delete object
         """
         self.debugprint(1, "DELETE " + self.path + "/" + name)
+        headers = {}
+        conn = None
         try:
-            conn = httplib.HTTPConnection('%s:%s' % (self.ipaddr, self.port))
-            headers = {}
-            conn.request("DELETE", self.path + "/" + name, headers=headers)
-            resp = conn.getresponse()
-            if resp.status == 200:
-                resp.read()
-        except httplib.HTTPException as err:
+            with ConnectionTimeout(self.conn_timeout):
+                (ipaddr, port) = self.get_next_host()
+                conn = self.do_connect(
+                    ipaddr, port, 'DELETE',
+                    self.path + "/" + name, headers, None, False)
+            with Timeout(self.proxy_timeout):
+                resp = self.conn_getresponse(conn)
+                if resp.status == 200 or resp.status == 404:
+                    resp.read()
+                elif resp.status == 500:
+                    msg = resp.read()
+                    raise SproxydException(
+                        'del_object: %s' % msg, 
+                        ipaddr=ipaddr, port=port,
+                        path=self.path, http_status=resp.status,
+                        http_reason=resp.reason)
+        except (Exception, Timeout) as err:
             raise err
-        else:
-            if resp.status == 500:
-                msg = resp.read()
-                raise SproxydException("deleting object: %s / %s" % (
-                        str(resp.status), str(msg)))        
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_diskfile(self, account, container, obj, **kwargs):
         """
@@ -161,9 +239,11 @@ class DiskFileWriter(object):
                                     filesystem.path + "/" + name)
         try:
             with ConnectionTimeout(filesystem.conn_timeout):
-                self._conn = http_connect_raw(
-                    filesystem.ipaddr, filesystem.port, 'PUT',
-                    filesystem.path + "/" + name, headers, None, False)
+                (ipaddr, port) = self._filesystem.get_next_host()
+                self._conn = self._filesystem.do_connect(
+                    ipaddr, port, 'PUT',
+                    filesystem.path + "/" + name, 
+                    headers, None, False)
         except (Exception, Timeout) as err:
             raise err
 
@@ -251,9 +331,11 @@ class DiskFileReader(object):
         headers = {}
         try:
             with ConnectionTimeout(self._filesystem.conn_timeout):
-                self._conn = http_connect_raw(
-                    self._filesystem.ipaddr, self._filesystem.port, 'GET',
-                    self._filesystem.path + "/" + self._name, headers, None, False)
+                (ipaddr, port) = self._filesystem.get_next_host()
+                self._conn = self._filesystem.do_connect(
+                    ipaddr, port, 'GET',
+                    self._filesystem.path + "/" + self._name, 
+                    headers, None, False)
         except (Exception, Timeout) as err:
             raise err
         resp = self._conn.getresponse()
@@ -269,9 +351,11 @@ class DiskFileReader(object):
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
         try:
             with ConnectionTimeout(self._filesystem.conn_timeout):
-                self._conn = http_connect_raw(
-                    self._filesystem.ipaddr, self._filesystem.port, 'GET',
-                    self._filesystem.path + "/" + self._name, headers, None, False)
+                (ipaddr, port) = self._filesystem.get_next_host()
+                self._conn = self._filesystem.do_connect(
+                    ipaddr, port, 'GET',
+                    self._filesystem.path + "/" + self._name, 
+                    headers, None, False)
         except (Exception, Timeout) as err:
             raise err
         resp = self._conn.getresponse()
@@ -344,16 +428,6 @@ class DiskFile(object):
         self._metadata = metadata or {}
         return self
 
-    def open_meta(self):
-        """
-        get the metadata from sproxyd
-        """
-        metadata = self._filesystem.get_meta(self._name)
-        if metadata is None:
-            raise DiskFileDeleted()
-        self._metadata = metadata or {}
-        return self
-
     def __enter__(self):
         if self._metadata is None:
             raise DiskFileNotOpen()
@@ -379,7 +453,7 @@ class DiskFile(object):
 
         :returns: metadata dictionary for an object
         """
-        with self.open_meta():
+        with self.open():
             return self.get_metadata()
 
     def reader(self, keep_cache=False):
