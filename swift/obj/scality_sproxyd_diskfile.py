@@ -72,9 +72,9 @@ class ScalitySproxydFileSystem(object):
 
     def __init__(self, conf, logger):
         self._logger = logger
-        self.conn_timeout = int(conf.get('conn_timeout', 10))
-        self.proxy_timeout = int(conf.get('proxy_timeout', 3))
-        host = conf.get('host', 'localhost:81')
+        self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
+        self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
+        host = conf.get('sproxyd_host', 'localhost:81')
         self.hosts = []
         if "," in host:
             self.hosts = host.split(",")
@@ -82,7 +82,7 @@ class ScalitySproxydFileSystem(object):
         else:
             self.hosts.append(host)
         self.host_index = 0
-        self.path = conf.get('path', '/proxy/chord')
+        self.path = conf.get('sproxyd_path', '/proxy/chord')
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
