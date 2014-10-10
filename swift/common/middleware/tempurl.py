@@ -46,9 +46,9 @@ limited to the expiration time set when the website created the link.
 
 To create such temporary URLs, first an X-Account-Meta-Temp-URL-Key
 header must be set on the Swift account. Then, an HMAC-SHA1 (RFC 2104)
-signature is generated using the HTTP method to allow (GET or PUT),
-the Unix timestamp the access should be allowed until, the full path
-to the object, and the key set on the account.
+signature is generated using the HTTP method to allow (GET, PUT,
+DELETE, etc.), the Unix timestamp the access should be allowed until,
+the full path to the object, and the key set on the account.
 
 For example, here is code generating the signature for a GET for 60
 seconds on /v1/AUTH_account/container/object::
@@ -74,8 +74,8 @@ da39a3ee5e6b4b0d3255bfef95601890afd80709 and expires ends up
     temp_url_expires=1323479485
 
 Any alteration of the resource path or query arguments would result
-in 401 Unauthorized. Similary, a PUT where GET was the allowed method
-would 401. HEAD is allowed if GET or PUT is allowed.
+in 401 Unauthorized. Similarly, a PUT where GET was the allowed method
+would 401. HEAD is allowed if GET, PUT, or POST is allowed.
 
 Using this in combination with browser form post translation
 middleware could also allow direct-from-browser uploads to specific
@@ -204,15 +204,21 @@ class TempURL(object):
             '*' to indicate a prefix match.
             Default: x-object-meta-public-*
 
+        methods
+            A whitespace delimited list of request methods that are
+            allowed to be used with a temporary URL.
+            Default: 'GET HEAD PUT POST DELETE'
+
     The proxy logs created for any subrequests made will have swift.source set
-    to "FP".
+    to "TU".
 
     :param app: The next WSGI filter or app in the paste.deploy
                 chain.
     :param conf: The configuration dict for the middleware.
     """
 
-    def __init__(self, app, conf, methods=('GET', 'HEAD', 'PUT')):
+    def __init__(self, app, conf,
+                 methods=('GET', 'HEAD', 'PUT', 'POST', 'DELETE')):
         #: The next WSGI application/filter in the paste.deploy pipeline.
         self.app = app
         #: The filter configuration dict.
@@ -301,6 +307,8 @@ class TempURL(object):
                 self._get_hmacs(env, temp_url_expires, keys,
                                 request_method='GET') +
                 self._get_hmacs(env, temp_url_expires, keys,
+                                request_method='POST') +
+                self._get_hmacs(env, temp_url_expires, keys,
                                 request_method='PUT'))
         else:
             hmac_vals = self._get_hmacs(env, temp_url_expires, keys)
@@ -345,7 +353,7 @@ class TempURL(object):
                 else:
                     name = basename(env['PATH_INFO'].rstrip('/'))
                     disposition_value = disposition_format(name)
-                # this is probably just paranoia, I couldn't acctually get a
+                # this is probably just paranoia, I couldn't actually get a
                 # newline into existing_disposition
                 value = disposition_value.replace('\n', '%0A')
                 out_headers.append(('Content-Disposition', value))
@@ -456,22 +464,19 @@ class TempURL(object):
         :param env: The WSGI environment for the request.
         """
         for h in env.keys():
-            remove = h in self.incoming_remove_headers
-            if not remove:
+            if h in self.incoming_allow_headers:
+                continue
+            for p in self.incoming_allow_headers_startswith:
+                if h.startswith(p):
+                    break
+            else:
+                if h in self.incoming_remove_headers:
+                    del env[h]
+                    continue
                 for p in self.incoming_remove_headers_startswith:
                     if h.startswith(p):
-                        remove = True
+                        del env[h]
                         break
-            if remove:
-                if h in self.incoming_allow_headers:
-                    remove = False
-            if remove:
-                for p in self.incoming_allow_headers_startswith:
-                    if h.startswith(p):
-                        remove = False
-                        break
-            if remove:
-                del env[h]
 
     def _clean_outgoing_headers(self, headers):
         """
@@ -487,22 +492,19 @@ class TempURL(object):
         """
         headers = HeaderKeyDict(headers)
         for h in headers.keys():
-            remove = h in self.outgoing_remove_headers
-            if not remove:
+            if h in self.outgoing_allow_headers:
+                continue
+            for p in self.outgoing_allow_headers_startswith:
+                if h.startswith(p):
+                    break
+            else:
+                if h in self.outgoing_remove_headers:
+                    del headers[h]
+                    continue
                 for p in self.outgoing_remove_headers_startswith:
                     if h.startswith(p):
-                        remove = True
+                        del headers[h]
                         break
-            if remove:
-                if h in self.outgoing_allow_headers:
-                    remove = False
-            if remove:
-                for p in self.outgoing_allow_headers_startswith:
-                    if h.startswith(p):
-                        remove = False
-                        break
-            if remove:
-                del headers[h]
         return headers.items()
 
 
@@ -511,7 +513,7 @@ def filter_factory(global_conf, **local_conf):
     conf = global_conf.copy()
     conf.update(local_conf)
 
-    methods = conf.get('methods', 'GET HEAD PUT').split()
+    methods = conf.get('methods', 'GET HEAD PUT POST DELETE').split()
     register_swift_info('tempurl', methods=methods)
 
     return lambda app: TempURL(app, conf, methods=methods)

@@ -15,6 +15,8 @@
 
 """WSGI tools for use with swift."""
 
+from __future__ import print_function
+
 import errno
 import inspect
 import os
@@ -137,17 +139,19 @@ def monkey_patch_mimetools():
         mimetools.Message.parsetype = parsetype
 
 
-def get_socket(conf, default_port=8080):
+def get_socket(conf):
     """Bind socket to bind ip:port in conf
 
     :param conf: Configuration dict to read settings from
-    :param default_port: port to use if not specified in conf
 
     :returns : a socket object as returned from socket.listen or
                ssl.wrap_socket if conf specifies cert_file
     """
-    bind_addr = (conf.get('bind_ip', '0.0.0.0'),
-                 int(conf.get('bind_port', default_port)))
+    try:
+        bind_port = int(conf['bind_port'])
+    except (ValueError, KeyError, TypeError):
+        raise ConfigFilePortError()
+    bind_addr = (conf.get('bind_ip', '0.0.0.0'), bind_port)
     address_family = [addr[0] for addr in socket.getaddrinfo(
         bind_addr[0], bind_addr[1], socket.AF_UNSPEC, socket.SOCK_STREAM)
         if addr[0] in (socket.AF_INET, socket.AF_INET6)][0]
@@ -376,6 +380,10 @@ def run_server(conf, logger, sock, global_conf=None):
     eventlet.patcher.monkey_patch(all=False, socket=True)
     eventlet_debug = config_true_value(conf.get('eventlet_debug', 'no'))
     eventlet.debug.hub_exceptions(eventlet_debug)
+    wsgi_logger = NullLogger()
+    if eventlet_debug:
+        # let eventlet.wsgi.server log to stderr
+        wsgi_logger = None
     # utils.LogAdapter stashes name in server; fallback on unadapted loggers
     if not global_conf:
         if hasattr(logger, 'server'):
@@ -391,10 +399,10 @@ def run_server(conf, logger, sock, global_conf=None):
         # necessary for the AWS SDK to work with swift3 middleware.
         argspec = inspect.getargspec(wsgi.server)
         if 'capitalize_response_headers' in argspec.args:
-            wsgi.server(sock, app, NullLogger(), custom_pool=pool,
+            wsgi.server(sock, app, wsgi_logger, custom_pool=pool,
                         capitalize_response_headers=False)
         else:
-            wsgi.server(sock, app, NullLogger(), custom_pool=pool)
+            wsgi.server(sock, app, wsgi_logger, custom_pool=pool)
     except socket.error as err:
         if err[0] != errno.EINVAL:
             raise
@@ -415,11 +423,18 @@ def run_wsgi(conf_path, app_section, *args, **kwargs):
         (conf, logger, log_name) = \
             _initrp(conf_path, app_section, *args, **kwargs)
     except ConfigFileError as e:
-        print e
+        print(e)
         return 1
 
     # bind to address and port
-    sock = get_socket(conf, default_port=kwargs.get('default_port', 8080))
+    try:
+        sock = get_socket(conf)
+    except ConfigFilePortError:
+        msg = 'bind_port wasn\'t properly set in the config file. ' \
+              'It must be explicitly set to a valid port number.'
+        logger.error(msg)
+        print(msg)
+        return 1
     # remaining tasks should not require elevated privileges
     drop_privileges(conf.get('user', 'swift'))
 
@@ -490,6 +505,10 @@ def run_wsgi(conf_path, app_section, *args, **kwargs):
 
 
 class ConfigFileError(Exception):
+    pass
+
+
+class ConfigFilePortError(ConfigFileError):
     pass
 
 

@@ -36,6 +36,7 @@ from eventlet import tpool
 from test.unit import (FakeLogger, mock as unit_mock, temptree,
                        patch_policies, debug_logger)
 
+from nose import SkipTest
 from swift.obj import diskfile
 from swift.common import utils
 from swift.common.utils import hash_path, mkdirs, Timestamp
@@ -951,6 +952,18 @@ class TestDiskFileManager(unittest.TestCase):
                 lock_exc = err
             self.assertTrue(lock_exc is None)
 
+    def test_missing_splice_warning(self):
+        logger = FakeLogger()
+        with mock.patch('swift.obj.diskfile.system_has_splice',
+                        lambda: False):
+            self.conf['splice'] = 'yes'
+            mgr = diskfile.DiskFileManager(self.conf, logger)
+
+        warnings = logger.get_lines_for_level('warning')
+        self.assertTrue(len(warnings) > 0)
+        self.assertTrue('splice()' in warnings[-1])
+        self.assertFalse(mgr.use_splice)
+
 
 @patch_policies
 class TestDiskFile(unittest.TestCase):
@@ -1079,6 +1092,25 @@ class TestDiskFile(unittest.TestCase):
             self.assert_('X-Object-Meta-Key1' not in df._metadata)
             # new fast-post updateable keys are added
             self.assertEquals('Value2', df._metadata['X-Object-Meta-Key2'])
+
+    def test_disk_file_preserves_sysmeta(self):
+        # build an object with some meta (ts 41)
+        orig_metadata = {'X-Object-Sysmeta-Key1': 'Value1',
+                         'Content-Type': 'text/garbage'}
+        df = self._get_open_disk_file(ts=41, extra_metadata=orig_metadata)
+        with df.open():
+            self.assertEquals('1024', df._metadata['Content-Length'])
+        # write some new metadata (fast POST, don't send orig meta, ts 42)
+        df = self._simple_get_diskfile()
+        df.write_metadata({'X-Timestamp': Timestamp(42).internal,
+                           'X-Object-Sysmeta-Key1': 'Value2',
+                           'X-Object-Meta-Key3': 'Value3'})
+        df = self._simple_get_diskfile()
+        with df.open():
+            # non-fast-post updateable keys are preserved
+            self.assertEquals('text/garbage', df._metadata['Content-Type'])
+            # original sysmeta keys are preserved
+            self.assertEquals('Value1', df._metadata['X-Object-Sysmeta-Key1'])
 
     def test_disk_file_reader_iter(self):
         df = self._create_test_file('1234567890')
@@ -2163,6 +2195,50 @@ class TestDiskFile(unittest.TestCase):
         dl = os.listdir(df._datadir)
         self.assertEquals(len(dl), 2)
         self.assertTrue(exp_name in set(dl))
+
+    def _system_can_zero_copy(self):
+        if not utils.system_has_splice():
+            return False
+
+        try:
+            utils.get_md5_socket()
+        except IOError:
+            return False
+
+        return True
+
+    def test_zero_copy_cache_dropping(self):
+        if not self._system_can_zero_copy():
+            raise SkipTest("zero-copy support is missing")
+
+        self.conf['splice'] = 'on'
+        self.conf['keep_cache_size'] = 16384
+        self.conf['disk_chunk_size'] = 4096
+        self.df_mgr = diskfile.DiskFileManager(self.conf, FakeLogger())
+
+        df = self._get_open_disk_file(fsize=16385)
+        reader = df.reader()
+        self.assertTrue(reader.can_zero_copy_send())
+        with mock.patch("swift.obj.diskfile.drop_buffer_cache") as dbc:
+            with mock.patch("swift.obj.diskfile.DROP_CACHE_WINDOW", 4095):
+                with open('/dev/null', 'w') as devnull:
+                    reader.zero_copy_send(devnull.fileno())
+                self.assertEqual(len(dbc.mock_calls), 5)
+
+    def test_zero_copy_turns_off_when_md5_sockets_not_supported(self):
+        if not self._system_can_zero_copy():
+            raise SkipTest("zero-copy support is missing")
+
+        self.conf['splice'] = 'on'
+        with mock.patch('swift.obj.diskfile.get_md5_socket') as mock_md5sock:
+            mock_md5sock.side_effect = IOError(
+                errno.EAFNOSUPPORT, "MD5 socket busted")
+            df = self._get_open_disk_file(fsize=128)
+            reader = df.reader()
+            self.assertFalse(reader.can_zero_copy_send())
+
+            log_lines = self.df_mgr.logger.get_lines_for_level('warning')
+            self.assert_('MD5 sockets' in log_lines[-1])
 
 
 if __name__ == '__main__':

@@ -79,6 +79,10 @@ class DeviceUnavailable(SwiftException):
     pass
 
 
+class InvalidAccountInfo(SwiftException):
+    pass
+
+
 class PathNotDir(OSError):
     pass
 
@@ -119,6 +123,18 @@ class DuplicateDeviceError(RingBuilderError):
     pass
 
 
+class UnPicklingError(SwiftException):
+    pass
+
+
+class FileNotFoundError(SwiftException):
+    pass
+
+
+class PermissionError(SwiftException):
+    pass
+
+
 class ListingIterError(SwiftException):
     pass
 
@@ -142,6 +158,10 @@ class ReplicationException(Exception):
 
 
 class ReplicationLockTimeout(LockTimeout):
+    pass
+
+
+class MimeInvalid(SwiftException):
     pass
 
 

@@ -54,7 +54,8 @@ from mock import MagicMock, patch
 
 from swift.common.exceptions import (Timeout, MessageTimeout,
                                      ConnectionTimeout, LockTimeout,
-                                     ReplicationLockTimeout)
+                                     ReplicationLockTimeout,
+                                     MimeInvalid)
 from swift.common import utils
 from swift.common.container_sync_realms import ContainerSyncRealms
 from swift.common.swob import Request, Response
@@ -110,10 +111,14 @@ class MockOs(object):
 
 
 class MockUdpSocket(object):
-    def __init__(self):
+    def __init__(self, sendto_errno=None):
         self.sent = []
+        self.sendto_errno = sendto_errno
 
     def sendto(self, data, target):
+        if self.sendto_errno:
+            raise socket.error(self.sendto_errno,
+                               'test errno %s' % self.sendto_errno)
         self.sent.append((data, target))
 
     def close(self):
@@ -442,7 +447,7 @@ class TestTimestamp(unittest.TestCase):
             self.assertTrue(float(timestamp) < maximum,
                             '%f is not smaller than %f given %r' % (
                                 timestamp, maximum, value))
-            # direct comparision of timestamp works too
+            # direct comparison of timestamp works too
             self.assertTrue(timestamp > minimum,
                             '%s is not bigger than %f given %r' % (
                                 timestamp.normal, minimum, value))
@@ -727,6 +732,30 @@ class TestUtils(unittest.TestCase):
         finally:
             shutil.rmtree(tmpdir)
 
+    def test_lock_path_num_sleeps(self):
+        tmpdir = mkdtemp()
+        num_short_calls = [0]
+        exception_raised = [False]
+
+        def my_sleep(to_sleep):
+            if to_sleep == 0.01:
+                num_short_calls[0] += 1
+            else:
+                raise Exception('sleep time changed: %s' % to_sleep)
+
+        try:
+            with mock.patch('swift.common.utils.sleep', my_sleep):
+                with utils.lock_path(tmpdir):
+                    with utils.lock_path(tmpdir):
+                        pass
+        except Exception as e:
+            exception_raised[0] = True
+            self.assertTrue('sleep time changed' in str(e))
+        finally:
+            shutil.rmtree(tmpdir)
+        self.assertEqual(num_short_calls[0], 11)
+        self.assertTrue(exception_raised[0])
+
     def test_lock_path_class(self):
         tmpdir = mkdtemp()
         try:
@@ -830,6 +859,24 @@ class TestUtils(unittest.TestCase):
         for last_modified, ts in expectations.items():
             real = utils.last_modified_date_to_timestamp(last_modified)
             self.assertEqual(real, ts, "failed for %s" % last_modified)
+
+    def test_last_modified_date_to_timestamp_when_system_not_UTC(self):
+        try:
+            old_tz = os.environ.get('TZ')
+            # Western Argentina Summer Time. Found in glibc manual; this
+            # timezone always has a non-zero offset from UTC, so this test is
+            # always meaningful.
+            os.environ['TZ'] = 'WART4WARST,J1/0,J365/25'
+
+            self.assertEqual(utils.last_modified_date_to_timestamp(
+                '1970-01-01T00:00:00.000000'),
+                0.0)
+
+        finally:
+            if old_tz is not None:
+                os.environ['TZ'] = old_tz
+            else:
+                os.environ.pop('TZ')
 
     def test_backwards(self):
         # Test swift.common.utils.backward
@@ -1456,6 +1503,9 @@ class TestUtils(unittest.TestCase):
             utils.load_libc_function('printf')))
         self.assert_(callable(
             utils.load_libc_function('some_not_real_function')))
+        self.assertRaises(AttributeError,
+                          utils.load_libc_function, 'some_not_real_function',
+                          fail_if_missing=True)
 
     def test_readconf(self):
         conf = '''[section1]
@@ -3037,6 +3087,18 @@ class TestStatsdLogging(unittest.TestCase):
         self.assertEqual(logger.logger.statsd_client._sample_rate_factor,
                          0.81)
 
+    def test_no_exception_when_cant_send_udp_packet(self):
+        logger = utils.get_logger({'log_statsd_host': 'some.host.com'})
+        statsd_client = logger.logger.statsd_client
+        fl = FakeLogger()
+        statsd_client.logger = fl
+        mock_socket = MockUdpSocket(sendto_errno=errno.EPERM)
+        statsd_client._open_socket = lambda *_: mock_socket
+        logger.increment('tunafish')
+        expected = ["Error sending UDP message to ('some.host.com', 8125): "
+                    "[Errno 1] test errno 1"]
+        self.assertEqual(fl.get_lines_for_level('warning'), expected)
+
     def test_sample_rates(self):
         logger = utils.get_logger({'log_statsd_host': 'some.host.com'})
 
@@ -3800,6 +3862,7 @@ class TestAuditLocationGenerator(unittest.TestCase):
             audit = lambda: list(utils.audit_location_generator(
                 tmpdir, "data", mount_check=False))
             self.assertRaises(OSError, audit)
+        rmtree(tmpdir)
 
         #Check Raise on Bad Suffix
         tmpdir = mkdtemp()
@@ -3818,6 +3881,7 @@ class TestAuditLocationGenerator(unittest.TestCase):
             audit = lambda: list(utils.audit_location_generator(
                 tmpdir, "data", mount_check=False))
             self.assertRaises(OSError, audit)
+        rmtree(tmpdir)
 
         #Check Raise on Bad Hash
         tmpdir = mkdtemp()
@@ -3836,6 +3900,7 @@ class TestAuditLocationGenerator(unittest.TestCase):
             audit = lambda: list(utils.audit_location_generator(
                 tmpdir, "data", mount_check=False))
             self.assertRaises(OSError, audit)
+        rmtree(tmpdir)
 
     def test_non_dir_drive(self):
         with temptree([]) as tmpdir:
@@ -4108,6 +4173,178 @@ class TestLRUCache(unittest.TestCase):
         for i in range(12):
             f(i)
         self.assertEqual(f.size(), 4)
+
+
+class TestParseContentDisposition(unittest.TestCase):
+
+    def test_basic_content_type(self):
+        name, attrs = utils.parse_content_disposition('text/plain')
+        self.assertEquals(name, 'text/plain')
+        self.assertEquals(attrs, {})
+
+    def test_content_type_with_charset(self):
+        name, attrs = utils.parse_content_disposition(
+            'text/plain; charset=UTF8')
+        self.assertEquals(name, 'text/plain')
+        self.assertEquals(attrs, {'charset': 'UTF8'})
+
+    def test_content_disposition(self):
+        name, attrs = utils.parse_content_disposition(
+            'form-data; name="somefile"; filename="test.html"')
+        self.assertEquals(name, 'form-data')
+        self.assertEquals(attrs, {'name': 'somefile', 'filename': 'test.html'})
+
+
+class TestIterMultipartMimeDocuments(unittest.TestCase):
+
+    def test_bad_start(self):
+        it = utils.iter_multipart_mime_documents(StringIO('blah'), 'unique')
+        exc = None
+        try:
+            it.next()
+        except MimeInvalid as err:
+            exc = err
+        self.assertEquals(str(exc), 'invalid starting boundary')
+
+    def test_empty(self):
+        it = utils.iter_multipart_mime_documents(StringIO('--unique'),
+                                                 'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(), '')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_basic(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nabcdefg\r\n--unique--'), 'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'abcdefg')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_basic2(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nabcdefg\r\n--unique\r\nhijkl\r\n--unique--'),
+            'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'abcdefg')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'hijkl')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_tiny_reads(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nabcdefg\r\n--unique\r\nhijkl\r\n--unique--'),
+            'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(2), 'ab')
+        self.assertEquals(fp.read(2), 'cd')
+        self.assertEquals(fp.read(2), 'ef')
+        self.assertEquals(fp.read(2), 'g')
+        self.assertEquals(fp.read(2), '')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'hijkl')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_big_reads(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nabcdefg\r\n--unique\r\nhijkl\r\n--unique--'),
+            'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(65536), 'abcdefg')
+        self.assertEquals(fp.read(), '')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'hijkl')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_broken_mid_stream(self):
+        # We go ahead and accept whatever is sent instead of rejecting the
+        # whole request, in case the partial form is still useful.
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nabc'), 'unique')
+        fp = it.next()
+        self.assertEquals(fp.read(), 'abc')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_readline(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nab\r\ncd\ref\ng\r\n--unique\r\nhi\r\n\r\n'
+                     'jkl\r\n\r\n--unique--'), 'unique')
+        fp = it.next()
+        self.assertEquals(fp.readline(), 'ab\r\n')
+        self.assertEquals(fp.readline(), 'cd\ref\ng')
+        self.assertEquals(fp.readline(), '')
+        fp = it.next()
+        self.assertEquals(fp.readline(), 'hi\r\n')
+        self.assertEquals(fp.readline(), '\r\n')
+        self.assertEquals(fp.readline(), 'jkl\r\n')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+    def test_readline_with_tiny_chunks(self):
+        it = utils.iter_multipart_mime_documents(
+            StringIO('--unique\r\nab\r\ncd\ref\ng\r\n--unique\r\nhi\r\n'
+                     '\r\njkl\r\n\r\n--unique--'),
+            'unique',
+            read_chunk_size=2)
+        fp = it.next()
+        self.assertEquals(fp.readline(), 'ab\r\n')
+        self.assertEquals(fp.readline(), 'cd\ref\ng')
+        self.assertEquals(fp.readline(), '')
+        fp = it.next()
+        self.assertEquals(fp.readline(), 'hi\r\n')
+        self.assertEquals(fp.readline(), '\r\n')
+        self.assertEquals(fp.readline(), 'jkl\r\n')
+        exc = None
+        try:
+            it.next()
+        except StopIteration as err:
+            exc = err
+        self.assertTrue(exc is not None)
+
+
+class TestPairs(unittest.TestCase):
+    def test_pairs(self):
+        items = [10, 20, 30, 40, 50, 60]
+        got_pairs = set(utils.pairs(items))
+        self.assertEqual(got_pairs,
+                         set([(10, 20), (10, 30), (10, 40), (10, 50), (10, 60),
+                              (20, 30), (20, 40), (20, 50), (20, 60),
+                              (30, 40), (30, 50), (30, 60),
+                              (40, 50), (40, 60),
+                              (50, 60)]))
 
 
 if __name__ == '__main__':

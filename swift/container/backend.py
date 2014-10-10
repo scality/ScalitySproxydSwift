@@ -20,13 +20,14 @@ import os
 from uuid import uuid4
 import time
 import cPickle as pickle
-import errno
 
 import sqlite3
 
-from swift.common.utils import Timestamp, lock_parent_directory
-from swift.common.db import DatabaseBroker, DatabaseConnectionError, \
-    PENDING_CAP, PICKLE_PROTOCOL, utf8encode
+from swift.common.utils import Timestamp
+from swift.common.db import DatabaseBroker, utf8encode
+
+
+SQLITE_ARG_LIMIT = 999
 
 DATADIR = 'containers'
 
@@ -317,6 +318,11 @@ class ContainerBroker(DatabaseBroker):
         self.put_object(name, timestamp, 0, 'application/deleted', 'noetag',
                         deleted=1, storage_policy_index=storage_policy_index)
 
+    def make_tuple_for_pickle(self, record):
+        return (record['name'], record['created_at'], record['size'],
+                record['content_type'], record['etag'], record['deleted'],
+                record['storage_policy_index'])
+
     def put_object(self, name, timestamp, size, content_type, etag, deleted=0,
                    storage_policy_index=0):
         """
@@ -335,31 +341,7 @@ class ContainerBroker(DatabaseBroker):
                   'content_type': content_type, 'etag': etag,
                   'deleted': deleted,
                   'storage_policy_index': storage_policy_index}
-        if self.db_file == ':memory:':
-            self.merge_items([record])
-            return
-        if not os.path.exists(self.db_file):
-            raise DatabaseConnectionError(self.db_file, "DB doesn't exist")
-        pending_size = 0
-        try:
-            pending_size = os.path.getsize(self.pending_file)
-        except OSError as err:
-            if err.errno != errno.ENOENT:
-                raise
-        if pending_size > PENDING_CAP:
-            self._commit_puts([record])
-        else:
-            with lock_parent_directory(self.pending_file,
-                                       self.pending_timeout):
-                with open(self.pending_file, 'a+b') as fp:
-                    # Colons aren't used in base64 encoding; so they are our
-                    # delimiter
-                    fp.write(':')
-                    fp.write(pickle.dumps(
-                        (name, timestamp, size, content_type, etag, deleted,
-                         storage_policy_index),
-                        protocol=PICKLE_PROTOCOL).encode('base64'))
-                    fp.flush()
+        self.put_record(record)
 
     def _is_deleted_info(self, object_count, put_timestamp, delete_timestamp,
                          **kwargs):
@@ -700,48 +682,70 @@ class ContainerBroker(DatabaseBroker):
                           'storage_policy_index'}
         :param source: if defined, update incoming_sync with the source
         """
+        for item in item_list:
+            if isinstance(item['name'], unicode):
+                item['name'] = item['name'].encode('utf-8')
+
         def _really_merge_items(conn):
-            max_rowid = -1
             curs = conn.cursor()
-            for rec in item_list:
-                rec.setdefault('storage_policy_index', 0)  # legacy
-                query = '''
-                    DELETE FROM object
-                    WHERE name = ? AND (created_at < ?)
-                    AND storage_policy_index = ?
-                '''
-                if self.get_db_version(conn) >= 1:
-                    query += ' AND deleted IN (0, 1)'
-                curs.execute(query, (rec['name'], rec['created_at'],
-                                     rec['storage_policy_index']))
-                query = '''
-                    SELECT 1 FROM object WHERE name = ?
-                    AND storage_policy_index = ?
-                '''
-                if self.get_db_version(conn) >= 1:
-                    query += ' AND deleted IN (0, 1)'
-                if not curs.execute(query, (
-                        rec['name'], rec['storage_policy_index'])).fetchall():
-                    curs.execute('''
-                        INSERT INTO object (name, created_at, size,
-                            content_type, etag, deleted, storage_policy_index)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', ([rec['name'], rec['created_at'], rec['size'],
-                          rec['content_type'], rec['etag'], rec['deleted'],
-                           rec['storage_policy_index']]))
+            if self.get_db_version(conn) >= 1:
+                query_mod = ' deleted IN (0, 1) AND '
+            else:
+                query_mod = ''
+            curs.execute('BEGIN IMMEDIATE')
+            # Get created_at times for objects in item_list that already exist.
+            # We must chunk it up to avoid sqlite's limit of 999 args.
+            created_at = {}
+            for offset in xrange(0, len(item_list), SQLITE_ARG_LIMIT):
+                chunk = [rec['name'] for rec in
+                         item_list[offset:offset + SQLITE_ARG_LIMIT]]
+                created_at.update(
+                    ((rec[0], rec[1]), rec[2]) for rec in curs.execute(
+                        'SELECT name, storage_policy_index, created_at '
+                        'FROM object WHERE ' + query_mod + ' name IN (%s)' %
+                        ','.join('?' * len(chunk)), chunk))
+            # Sort item_list into things that need adding and deleting, based
+            # on results of created_at query.
+            to_delete = {}
+            to_add = {}
+            for item in item_list:
+                item.setdefault('storage_policy_index', 0)  # legacy
+                item_ident = (item['name'], item['storage_policy_index'])
+                if created_at.get(item_ident) < item['created_at']:
+                    if item_ident in created_at:  # exists with older timestamp
+                        to_delete[item_ident] = item
+                    if item_ident in to_add:  # duplicate entries in item_list
+                        to_add[item_ident] = max(item, to_add[item_ident],
+                                                 key=lambda i: i['created_at'])
+                    else:
+                        to_add[item_ident] = item
+            if to_delete:
+                curs.executemany(
+                    'DELETE FROM object WHERE ' + query_mod +
+                    'name=? AND storage_policy_index=?',
+                    ((rec['name'], rec['storage_policy_index'])
+                     for rec in to_delete.itervalues()))
+            if to_add:
+                curs.executemany(
+                    'INSERT INTO object (name, created_at, size, content_type,'
+                    'etag, deleted, storage_policy_index)'
+                    'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    ((rec['name'], rec['created_at'], rec['size'],
+                      rec['content_type'], rec['etag'], rec['deleted'],
+                      rec['storage_policy_index'])
+                     for rec in to_add.itervalues()))
                 if source:
-                    max_rowid = max(max_rowid, rec['ROWID'])
-            if source:
-                try:
-                    conn.execute('''
-                        INSERT INTO incoming_sync (sync_point, remote_id)
-                        VALUES (?, ?)
+                    max_rowid = max(rec['ROWID']
+                                    for rec in to_add.itervalues())
+                    curs.execute('''
+                        UPDATE incoming_sync SET
+                        sync_point=max(?, sync_point) WHERE remote_id=?
                     ''', (max_rowid, source))
-                except sqlite3.IntegrityError:
-                    conn.execute('''
-                        UPDATE incoming_sync SET sync_point=max(?, sync_point)
-                        WHERE remote_id=?
-                    ''', (max_rowid, source))
+                    if curs.rowcount < 1:
+                        curs.execute('''
+                            INSERT INTO incoming_sync (sync_point, remote_id)
+                            VALUES (?, ?)
+                        ''', (max_rowid, source))
             conn.commit()
 
         with self.get() as conn:

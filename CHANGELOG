@@ -1,3 +1,118 @@
+swift (2.2.0)
+
+    * Added support for Keystone v3 auth.
+
+      Keystone v3 introduced the concept of "domains" and user names
+      are no longer unique across domains. Swift's Keystone integration
+      now requires that ACLs be set on IDs, which are unique across
+      domains, and further restricts setting new ACLs to only use IDs.
+
+      Please see http://swift.openstack.org/overview_auth.html for
+      more information on configuring Swift and Keystone together.
+
+    * Swift now supports server-side account-to-account copy. Server-
+      side copy in Swift requires the X-Copy-From header (on a PUT)
+      or the Destination header (on a COPY). To initiate an account-to-
+      account copy, the existing header value remains the same, but the
+      X-Copy-From-Account header (on a PUT) or the Destination-Account
+      (on a COPY) are used to indicate the proper account.
+
+    * Limit partition movement when adding a new placement tier.
+
+      When adding a new placement tier (server, zone, or region), Swift
+      previously attempted to move all placement partitions, regardless
+      of the space available on the new tier, to ensure the best possible
+      durability. Unfortunately, this could result in too many partitions
+      being moved all at once to a new tier. Swift's ring-builder now
+      ensures that only the correct number of placement partitions are
+      rebalanced, and thus makes adding capacity to the cluster more
+      efficient.
+
+    * Per storage policy container counts are now reported in an
+      account response headers.
+
+    * Swift will now reject, with a 4xx series response, GET requests
+      with more than 50 ranges, more than 3 overlapping ranges, or more
+      than 8 non-increasing ranges.
+
+    * The bind_port config setting is now required to be explicitly set.
+
+    * The object server can now use splice() for a zero-copy GET
+      response. This feature is enabled with the "splice" config variable
+      in the object server config and defaults to off. Also, this feature
+      only works on recent Linux kernels (AF_ALG sockets must be
+      supported). A zero-copy GET response can significantly reduce CPU
+      requirements for object servers.
+
+    * Added "--no-overlap" option to swift-dispersion populate so that
+      multiple runs of the tool can add coverage without overlapping
+      existing monitored partitions.
+
+    * swift-recon now supports filtering by region.
+
+    * Various other minor bug fixes and improvements.
+
+swift (2.1.0)
+
+    * swift-ring-builder placement was improved to allow gradual addition
+      of new regions without causing a massive migration of data to the new
+      region. The change was to prefer device weight first, then look at
+      failure domains.
+
+    * Logging updates
+
+      - Eliminated "Handoff requested (N)" log spam.
+
+      - Added process pid to the end of storage node log lines.
+
+      - Container auditor now logs a warning if the devices path contains a
+        non-directory.
+
+      - Object daemons now send a user-agent string with their full name.
+
+    * 412 and 416 responses are no longer tracked as errors in the StatsD
+      messages from the backend servers.
+
+    * Parallel object auditor
+
+      The object auditor can now be controlled with a "concurrency" config
+      value that allows multiple auditor processes to run at once. Using
+      multiple parallel auditor processes can speed up the overall auditor
+      cycle time.
+
+    * The object updater will now concurrently update each necessary node
+      in a new greenthread.
+
+    * TempURL updates
+
+      - The default allowed methods have changed to also allow POST and
+        DELETE. The new default list is "GET HEAD PUT POST DELETE".
+
+      - TempURLs for POST now also allow HEAD, matching existing GET and PUT
+        functionality.
+
+      - Added filename*= support to TempURL Content-Disposition response
+        header.
+
+    * X-Delete-At/After can now be used with the FormPost middleware.
+
+    * Make swift-form-signature output a sample form.
+
+    * Add v2 API to list endpoints middleware
+
+      The new API adds better support for storage policies and changes the
+      response from a list of backend urls to a dictionary with the keys
+      "endpoints" and "headers". The endpoints key contains a list of the
+      backend urls, and the headers key is a dictionary of headers to send
+      along with the backend request.
+
+    * Added allow_account_management and account_autocreate values to /info
+      responses.
+
+    * Enable object system metadata on PUTs (Note: POST support is ongoing).
+
+    * Various other minor bug fixes and improvements.
+
 swift (2.0.0)
 
     * Storage policies

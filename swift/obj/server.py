@@ -25,11 +25,12 @@ import math
 from swift import gettext_ as _
 from hashlib import md5
 
-from eventlet import sleep, Timeout
+from eventlet import sleep, wsgi, Timeout
 
 from swift.common.utils import public, get_logger, \
     config_true_value, timing_stats, replication, \
-    normalize_delete_at_timestamp, get_log_line, Timestamp
+    normalize_delete_at_timestamp, get_log_line, Timestamp, \
+    get_expirer_container
 from swift.common.bufferedhttp import http_connect
 from swift.common.constraints import check_object_creation, \
     valid_timestamp, check_utf8
@@ -38,7 +39,8 @@ from swift.common.exceptions import ConnectionTimeout, DiskFileQuarantined, \
     DiskFileDeviceUnavailable, DiskFileExpired, ChunkReadTimeout
 from swift.obj import ssync_receiver
 from swift.common.http import is_success
-from swift.common.request_helpers import get_name_and_placement, is_user_meta
+from swift.common.request_helpers import get_name_and_placement, \
+    is_user_meta, is_sys_or_user_meta
 from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPInternalServerError, HTTPNoContent, HTTPNotFound, \
     HTTPPreconditionFailed, HTTPRequestTimeout, HTTPUnprocessableEntity, \
@@ -46,6 +48,19 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPInsufficientStorage, HTTPForbidden, HTTPException, HeaderKeyDict, \
     HTTPConflict
 from swift.obj.diskfile import DATAFILE_SYSTEM_META, DiskFileManager
+
+
+class EventletPlungerString(str):
+    """
+    Eventlet won't send headers until it's accumulated at least
+    eventlet.wsgi.MINIMUM_CHUNK_SIZE bytes or the app iter is exhausted. If we
+    want to send the response body behind Eventlet's back, perhaps with some
+    zero-copy wizardry, then we have to unclog the plumbing in eventlet.wsgi
+    to force the headers out, so we use an EventletPlungerString to empty out
+    all of Eventlet's buffers.
+    """
+    def __len__(self):
+        return wsgi.MINIMUM_CHUNK_SIZE + 1
 
 
 class ObjectController(object):
@@ -283,9 +298,9 @@ class ObjectController(object):
                     'best guess as to the container name for now.' % op)
                 # TODO(gholt): In a future release, change the above warning to
                 # a raised exception and remove the guess code below.
-                delete_at_container = (
-                    int(delete_at) / self.expiring_objects_container_divisor *
-                    self.expiring_objects_container_divisor)
+                delete_at_container = get_expirer_container(
+                    delete_at, self.expiring_objects_container_divisor,
+                    account, container, obj)
             partition = headers_in.get('X-Delete-At-Partition', None)
             hosts = headers_in.get('X-Delete-At-Host', '')
             contdevices = headers_in.get('X-Delete-At-Device', '')
@@ -306,9 +321,9 @@ class ObjectController(object):
             # exist there and the original data is left where it is, where
             # it will be ignored when the expirer eventually tries to issue the
             # object DELETE later since the X-Delete-At value won't match up.
-            delete_at_container = str(
-                int(delete_at) / self.expiring_objects_container_divisor *
-                self.expiring_objects_container_divisor)
+            delete_at_container = get_expirer_container(
+                delete_at, self.expiring_objects_container_divisor,
+                account, container, obj)
         delete_at_container = normalize_delete_at_timestamp(
             delete_at_container)
 
@@ -342,7 +357,9 @@ class ObjectController(object):
             return HTTPNotFound(request=request)
         orig_timestamp = Timestamp(orig_metadata.get('X-Timestamp', 0))
         if orig_timestamp >= req_timestamp:
-            return HTTPConflict(request=request)
+            return HTTPConflict(
+                request=request,
+                headers={'X-Backend-Timestamp': orig_timestamp.internal})
         metadata = {'X-Timestamp': req_timestamp.internal}
         metadata.update(val for val in request.headers.iteritems()
                         if is_user_meta('object', val[0]))
@@ -402,8 +419,10 @@ class ObjectController(object):
                 return HTTPPreconditionFailed(request=request)
 
         orig_timestamp = Timestamp(orig_metadata.get('X-Timestamp', 0))
-        if orig_timestamp and orig_timestamp >= req_timestamp:
-            return HTTPConflict(request=request)
+        if orig_timestamp >= req_timestamp:
+            return HTTPConflict(
+                request=request,
+                headers={'X-Backend-Timestamp': orig_timestamp.internal})
         orig_delete_at = int(orig_metadata.get('X-Delete-At') or 0)
         upload_expiration = time.time() + self.max_upload_time
         etag = md5()
@@ -445,7 +464,7 @@ class ObjectController(object):
                     'Content-Length': str(upload_size),
                 }
                 metadata.update(val for val in request.headers.iteritems()
-                                if is_user_meta('object', val[0]))
+                                if is_sys_or_user_meta('object', val[0]))
                 for header_key in (
                         request.headers.get('X-Backend-Replication-Headers') or
                         self.allowed_headers):
@@ -503,7 +522,7 @@ class ObjectController(object):
                 response.headers['Content-Type'] = metadata.get(
                     'Content-Type', 'application/octet-stream')
                 for key, value in metadata.iteritems():
-                    if is_user_meta('object', key) or \
+                    if is_sys_or_user_meta('object', key) or \
                             key.lower() in self.allowed_headers:
                         response.headers[key] = value
                 response.etag = metadata['ETag']
@@ -549,7 +568,7 @@ class ObjectController(object):
         response.headers['Content-Type'] = metadata.get(
             'Content-Type', 'application/octet-stream')
         for key, value in metadata.iteritems():
-            if is_user_meta('object', key) or \
+            if is_sys_or_user_meta('object', key) or \
                     key.lower() in self.allowed_headers:
                 response.headers[key] = value
         response.etag = metadata['ETag']
@@ -598,6 +617,7 @@ class ObjectController(object):
                 response_class = HTTPNoContent
             else:
                 response_class = HTTPConflict
+        response_timestamp = max(orig_timestamp, req_timestamp)
         orig_delete_at = int(orig_metadata.get('X-Delete-At') or 0)
         try:
             req_if_delete_at_val = request.headers['x-if-delete-at']
@@ -631,7 +651,9 @@ class ObjectController(object):
                 'DELETE', account, container, obj, request,
                 HeaderKeyDict({'x-timestamp': req_timestamp.internal}),
                 device, policy_idx)
-        return response_class(request=request)
+        return response_class(
+            request=request,
+            headers={'X-Backend-Timestamp': response_timestamp.internal})
 
     @public
     @replication
@@ -701,7 +723,57 @@ class ObjectController(object):
             slow = self.slow - trans_time
             if slow > 0:
                 sleep(slow)
-        return res(env, start_response)
+
+        # To be able to zero-copy send the object, we need a few things.
+        # First, we have to be responding successfully to a GET, or else we're
+        # not sending the object. Second, we have to be able to extract the
+        # socket file descriptor from the WSGI input object. Third, the
+        # diskfile has to support zero-copy send.
+        #
+        # There's a good chance that this could work for 206 responses too,
+        # but the common case is sending the whole object, so we'll start
+        # there.
+        if req.method == 'GET' and res.status_int == 200 and \
+           isinstance(env['wsgi.input'], wsgi.Input):
+            app_iter = getattr(res, 'app_iter', None)
+            checker = getattr(app_iter, 'can_zero_copy_send', None)
+            if checker and checker():
+                # For any kind of zero-copy thing like sendfile or splice, we
+                # need the file descriptor. Eventlet doesn't provide a clean
+                # way of getting that, so we resort to this.
+                wsock = env['wsgi.input'].get_socket()
+                wsockfd = wsock.fileno()
+
+                # Don't call zero_copy_send() until after we force the HTTP
+                # headers out of Eventlet and into the socket.
+                def zero_copy_iter():
+                    # If possible, set TCP_CORK so that headers don't
+                    # immediately go on the wire, but instead, wait for some
+                    # response body to make the TCP frames as large as
+                    # possible (and hence as few packets as possible).
+                    #
+                    # On non-Linux systems, we might consider TCP_NODELAY, but
+                    # since the only known zero-copy-capable diskfile uses
+                    # Linux-specific syscalls, we'll defer that work until
+                    # someone needs it.
+                    if hasattr(socket, 'TCP_CORK'):
+                        wsock.setsockopt(socket.IPPROTO_TCP,
+                                         socket.TCP_CORK, 1)
+                    yield EventletPlungerString()
+                    try:
+                        app_iter.zero_copy_send(wsockfd)
+                    except Exception:
+                        self.logger.exception("zero_copy_send() blew up")
+                        raise
+                    yield ''
+
+                # Get headers ready to go out
+                res(env, start_response)
+                return zero_copy_iter()
+            else:
+                return res(env, start_response)
+        else:
+            return res(env, start_response)
 
 
 def global_conf_callback(preloaded_app_conf, global_conf):

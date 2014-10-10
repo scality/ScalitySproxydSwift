@@ -451,6 +451,23 @@ class TestTempURL(unittest.TestCase):
         self.assertEquals(req.environ['swift.authorize_override'], True)
         self.assertEquals(req.environ['REMOTE_USER'], '.wsgi.tempurl')
 
+    def test_head_allowed_by_post(self):
+        method = 'POST'
+        expires = int(time() + 86400)
+        path = '/v1/a/c/o'
+        key = 'abc'
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(key, hmac_body, sha1).hexdigest()
+        req = self._make_request(
+            path, keys=[key],
+            environ={'REQUEST_METHOD': 'HEAD',
+                     'QUERY_STRING': 'temp_url_sig=%s&temp_url_expires=%s' % (
+                         sig, expires)})
+        resp = req.get_response(self.tempurl)
+        self.assertEquals(resp.status_int, 404)
+        self.assertEquals(req.environ['swift.authorize_override'], True)
+        self.assertEquals(req.environ['REMOTE_USER'], '.wsgi.tempurl')
+
     def test_head_otherwise_not_allowed(self):
         method = 'PUT'
         expires = int(time() + 86400)
@@ -470,7 +487,8 @@ class TestTempURL(unittest.TestCase):
         self.assertEquals(resp.status_int, 401)
         self.assertTrue('Www-Authenticate' in resp.headers)
 
-    def test_post_not_allowed(self):
+    def test_post_when_forbidden_by_config(self):
+        self.tempurl.methods.remove('POST')
         method = 'POST'
         expires = int(time() + 86400)
         path = '/v1/a/c/o'
@@ -487,7 +505,8 @@ class TestTempURL(unittest.TestCase):
         self.assertTrue('Temp URL invalid' in resp.body)
         self.assertTrue('Www-Authenticate' in resp.headers)
 
-    def test_delete_not_allowed(self):
+    def test_delete_when_forbidden_by_config(self):
+        self.tempurl.methods.remove('DELETE')
         method = 'DELETE'
         expires = int(time() + 86400)
         path = '/v1/a/c/o'
@@ -504,8 +523,7 @@ class TestTempURL(unittest.TestCase):
         self.assertTrue('Temp URL invalid' in resp.body)
         self.assertTrue('Www-Authenticate' in resp.headers)
 
-    def test_delete_allowed_with_conf(self):
-        self.tempurl.methods.append('DELETE')
+    def test_delete_allowed(self):
         method = 'DELETE'
         expires = int(time() + 86400)
         path = '/v1/a/c/o'
@@ -645,6 +663,44 @@ class TestTempURL(unittest.TestCase):
         self.assertEquals(
             self.app.request.headers['x-remove-this-except-this'], 'value2')
 
+    def test_allow_trumps_incoming_header_conflict(self):
+        self.tempurl = tempurl.filter_factory({
+            'incoming_remove_headers': 'x-conflict-header',
+            'incoming_allow_headers': 'x-conflict-header'})(self.auth)
+        method = 'GET'
+        expires = int(time() + 86400)
+        path = '/v1/a/c/o'
+        key = 'abc'
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(key, hmac_body, sha1).hexdigest()
+        req = self._make_request(
+            path, keys=[key],
+            headers={'x-conflict-header': 'value'},
+            environ={'QUERY_STRING': 'temp_url_sig=%s&temp_url_expires=%s' % (
+                sig, expires)})
+        resp = req.get_response(self.tempurl)
+        self.assertEquals(resp.status_int, 404)
+        self.assertTrue('x-conflict-header' in self.app.request.headers)
+
+    def test_allow_trumps_incoming_header_startswith_conflict(self):
+        self.tempurl = tempurl.filter_factory({
+            'incoming_remove_headers': 'x-conflict-header-*',
+            'incoming_allow_headers': 'x-conflict-header-*'})(self.auth)
+        method = 'GET'
+        expires = int(time() + 86400)
+        path = '/v1/a/c/o'
+        key = 'abc'
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(key, hmac_body, sha1).hexdigest()
+        req = self._make_request(
+            path, keys=[key],
+            headers={'x-conflict-header-test': 'value'},
+            environ={'QUERY_STRING': 'temp_url_sig=%s&temp_url_expires=%s' % (
+                sig, expires)})
+        resp = req.get_response(self.tempurl)
+        self.assertEquals(resp.status_int, 404)
+        self.assertTrue('x-conflict-header-test' in self.app.request.headers)
+
     def test_removed_outgoing_header(self):
         self.tempurl = tempurl.filter_factory({
             'outgoing_remove_headers': 'x-test-header-one-a'})(self.auth)
@@ -683,6 +739,50 @@ class TestTempURL(unittest.TestCase):
         self.assertTrue('x-test-header-two-a' not in resp.headers)
         self.assertEquals(resp.headers['x-test-header-two-b'], 'value3')
 
+    def test_allow_trumps_outgoing_header_conflict(self):
+        self.tempurl = tempurl.filter_factory({
+            'outgoing_remove_headers': 'x-conflict-header',
+            'outgoing_allow_headers': 'x-conflict-header'})(self.auth)
+        method = 'GET'
+        expires = int(time() + 86400)
+        path = '/v1/a/c/o'
+        key = 'abc'
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(key, hmac_body, sha1).hexdigest()
+        req = self._make_request(
+            path, keys=[key],
+            headers={},
+            environ={'QUERY_STRING': 'temp_url_sig=%s&temp_url_expires=%s' % (
+                sig, expires)})
+        self.tempurl.app = FakeApp(iter([('200 Ok', {
+            'X-Conflict-Header': 'value'}, '123')]))
+        resp = req.get_response(self.tempurl)
+        self.assertEquals(resp.status_int, 200)
+        self.assertTrue('x-conflict-header' in resp.headers)
+        self.assertEqual(resp.headers['x-conflict-header'], 'value')
+
+    def test_allow_trumps_outgoing_header_startswith_conflict(self):
+        self.tempurl = tempurl.filter_factory({
+            'outgoing_remove_headers': 'x-conflict-header-*',
+            'outgoing_allow_headers': 'x-conflict-header-*'})(self.auth)
+        method = 'GET'
+        expires = int(time() + 86400)
+        path = '/v1/a/c/o'
+        key = 'abc'
+        hmac_body = '%s\n%s\n%s' % (method, expires, path)
+        sig = hmac.new(key, hmac_body, sha1).hexdigest()
+        req = self._make_request(
+            path, keys=[key],
+            headers={},
+            environ={'QUERY_STRING': 'temp_url_sig=%s&temp_url_expires=%s' % (
+                sig, expires)})
+        self.tempurl.app = FakeApp(iter([('200 Ok', {
+            'X-Conflict-Header-Test': 'value'}, '123')]))
+        resp = req.get_response(self.tempurl)
+        self.assertEquals(resp.status_int, 200)
+        self.assertTrue('x-conflict-header-test' in resp.headers)
+        self.assertEqual(resp.headers['x-conflict-header-test'], 'value')
+
     def test_get_account(self):
         self.assertEquals(self.tempurl._get_account({
             'REQUEST_METHOD': 'HEAD', 'PATH_INFO': '/v1/a/c/o'}), 'a')
@@ -691,9 +791,9 @@ class TestTempURL(unittest.TestCase):
         self.assertEquals(self.tempurl._get_account({
             'REQUEST_METHOD': 'PUT', 'PATH_INFO': '/v1/a/c/o'}), 'a')
         self.assertEquals(self.tempurl._get_account({
-            'REQUEST_METHOD': 'POST', 'PATH_INFO': '/v1/a/c/o'}), None)
+            'REQUEST_METHOD': 'POST', 'PATH_INFO': '/v1/a/c/o'}), 'a')
         self.assertEquals(self.tempurl._get_account({
-            'REQUEST_METHOD': 'DELETE', 'PATH_INFO': '/v1/a/c/o'}), None)
+            'REQUEST_METHOD': 'DELETE', 'PATH_INFO': '/v1/a/c/o'}), 'a')
         self.assertEquals(self.tempurl._get_account({
             'REQUEST_METHOD': 'UNKNOWN', 'PATH_INFO': '/v1/a/c/o'}), None)
         self.assertEquals(self.tempurl._get_account({
@@ -936,14 +1036,14 @@ class TestSwiftInfo(unittest.TestCase):
         swift_info = utils.get_swift_info()
         self.assertTrue('tempurl' in swift_info)
         self.assertEqual(set(swift_info['tempurl']['methods']),
-                         set(('GET', 'HEAD', 'PUT')))
+                         set(('GET', 'HEAD', 'PUT', 'POST', 'DELETE')))
 
     def test_non_default_methods(self):
-        tempurl.filter_factory({'methods': 'GET HEAD PUT POST DELETE'})
+        tempurl.filter_factory({'methods': 'GET HEAD PUT DELETE BREW'})
         swift_info = utils.get_swift_info()
         self.assertTrue('tempurl' in swift_info)
         self.assertEqual(set(swift_info['tempurl']['methods']),
-                         set(('GET', 'HEAD', 'PUT', 'POST', 'DELETE')))
+                         set(('GET', 'HEAD', 'PUT', 'DELETE', 'BREW')))
 
 
 if __name__ == '__main__':

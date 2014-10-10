@@ -164,7 +164,8 @@ class TestProfileMiddleware(unittest.TestCase):
         resp = self.app(env2, self.start_response)
         self.assertEqual(self.got_statuses, ['405 Method Not Allowed'], resp)
 
-        wsgi_input = StringIO.StringIO(body + '&profile=135&download=download')
+        # use a totally bogus profile identifier
+        wsgi_input = StringIO.StringIO(body + '&profile=ABC&download=download')
         environ['wsgi.input'] = wsgi_input
         resp = self.app(environ, self.start_response)
         self.assertEqual(self.got_statuses, ['404 Not Found'], resp)
@@ -194,7 +195,9 @@ class Test_profile_log(unittest.TestCase):
     def setUp(self):
         if xprofile is None:
             raise SkipTest
-        self.log_filename_prefix1 = tempfile.mkdtemp() + '/unittest.profile'
+
+        self.dir1 = tempfile.mkdtemp()
+        self.log_filename_prefix1 = self.dir1 + '/unittest.profile'
         self.profile_log1 = ProfileLog(self.log_filename_prefix1, False)
         self.pids1 = ['123', '456', str(os.getpid())]
         profiler1 = xprofile.get_profiler('eventlet.green.profile')
@@ -202,7 +205,8 @@ class Test_profile_log(unittest.TestCase):
             profiler1.runctx('import os;os.getcwd();', globals(), locals())
             self.profile_log1.dump_profile(profiler1, pid)
 
-        self.log_filename_prefix2 = tempfile.mkdtemp() + '/unittest.profile'
+        self.dir2 = tempfile.mkdtemp()
+        self.log_filename_prefix2 = self.dir2 + '/unittest.profile'
         self.profile_log2 = ProfileLog(self.log_filename_prefix2, True)
         self.pids2 = ['321', '654', str(os.getpid())]
         profiler2 = xprofile.get_profiler('eventlet.green.profile')
@@ -213,6 +217,8 @@ class Test_profile_log(unittest.TestCase):
     def tearDown(self):
         self.profile_log1.clear('all')
         self.profile_log2.clear('all')
+        shutil.rmtree(self.dir1, ignore_errors=True)
+        shutil.rmtree(self.dir2, ignore_errors=True)
 
     def test_get_all_pids(self):
         self.assertEquals(self.profile_log1.get_all_pids(),

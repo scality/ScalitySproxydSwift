@@ -139,23 +139,13 @@ class FakeRing(Ring):
         self._part_shift = 32 - part_power
         self._reload()
 
-    def get_part(self, *args, **kwargs):
-        # always call the real method, even if the fake ignores the result
-        real_part = super(FakeRing, self).get_part(*args, **kwargs)
-        if self._part_shift == 32:
-            return 1
-        return real_part
-
     def _reload(self):
         self._rtime = time.time()
 
     def clear_errors(self):
         for dev in self.devs:
             for key in ('errors', 'last_error'):
-                try:
-                    del dev[key]
-                except KeyError:
-                    pass
+                dev.pop(key, None)
 
     def set_replicas(self, replicas):
         self.replicas = replicas
@@ -386,7 +376,8 @@ class FakeLogger(logging.Logger):
 
     def _clear(self):
         self.log_dict = defaultdict(list)
-        self.lines_dict = defaultdict(list)
+        self.lines_dict = {'critical': [], 'error': [], 'info': [],
+                           'warning': [], 'debug': []}
 
     def _store_in(store_name):
         def stub_fn(self, *args, **kwargs):
@@ -400,7 +391,16 @@ class FakeLogger(logging.Logger):
         return stub_fn
 
     def get_lines_for_level(self, level):
+        if level not in self.lines_dict:
+            raise KeyError(
+                "Invalid log level '%s'; valid levels are %s" %
+                (level,
+                 ', '.join("'%s'" % lvl for lvl in sorted(self.lines_dict))))
         return self.lines_dict[level]
+
+    def all_log_lines(self):
+        return dict((level, msgs) for level, msgs in self.lines_dict.items()
+                    if len(msgs) > 0)
 
     error = _store_and_log_in('error', logging.ERROR)
     info = _store_and_log_in('info', logging.INFO)
@@ -658,7 +658,10 @@ def fake_http_connect(*code_iter, **kwargs):
         def getexpect(self):
             if isinstance(self.expect_status, (Exception, Timeout)):
                 raise self.expect_status
-            return FakeConn(self.expect_status)
+            headers = {}
+            if self.expect_status == 409:
+                headers['X-Backend-Timestamp'] = self.timestamp
+            return FakeConn(self.expect_status, headers=headers)
 
         def getheaders(self):
             etag = self.etag
@@ -671,6 +674,7 @@ def fake_http_connect(*code_iter, **kwargs):
             headers = {'content-length': len(self.body),
                        'content-type': 'x-application/test',
                        'x-timestamp': self.timestamp,
+                       'x-backend-timestamp': self.timestamp,
                        'last-modified': self.timestamp,
                        'x-object-meta-test': 'testing',
                        'x-delete-at': '9876543210',
