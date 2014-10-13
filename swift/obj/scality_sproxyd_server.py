@@ -26,7 +26,6 @@ from swift.common.exceptions import ConnectionTimeout
 from swift.common.http import is_success
 from swift.obj.scality_sproxyd_diskfile import ScalitySproxydFileSystem
 from swift.obj import server
-from swift.common.utils import get_logger
 
 
 class ObjectController(server.ObjectController):
@@ -34,15 +33,14 @@ class ObjectController(server.ObjectController):
     Implements the WSGI application for the Scality Sproxyd Object Server.
     """
 
-    def setup(self, conf, logger=None):
+    def setup(self, conf):
         """
         :param conf: WSGI configuration parameter
         """
-        self.logger = logger or get_logger(conf, log_route='object-server')
         self._filesystem = ScalitySproxydFileSystem(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
-                     **kwargs):
+                     policy_idx, **kwargs):
         """
         Utility method for instantiating a DiskFile object supporting a given
         REST API.
@@ -54,7 +52,7 @@ class ObjectController(server.ObjectController):
         return self._filesystem.get_diskfile(account, container, obj, **kwargs)
 
     def async_update(self, op, account, container, obj, host, partition,
-                     contdevice, headers_out, objdevice):
+                     contdevice, headers_out, objdevice, policy_index):
         """
         Sends or saves an async update.
 
@@ -68,6 +66,7 @@ class ObjectController(server.ObjectController):
         :param headers_out: dictionary of headers to send in the container
                             request
         :param objdevice: device name that the object is in
+        :param policy_index: the associated storage policy index
         """
         headers_out['user-agent'] = 'obj-server %s' % os.getpid()
         full_path = '/%s/%s/%s' % (account, container, obj)

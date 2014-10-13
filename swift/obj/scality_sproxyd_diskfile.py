@@ -19,14 +19,17 @@ import hashlib
 import httplib
 import pickle
 import base64
+import random
+from contextlib import contextmanager
+
 from eventlet.timeout import Timeout
+
 from swift.common.bufferedhttp import http_connect_raw
 from swift.common.exceptions import ChunkReadTimeout, \
     ChunkWriteTimeout, ConnectionTimeout, \
     DiskFileQuarantined, DiskFileNotExist, \
     DiskFileDeleted, DiskFileNotOpen, \
     DiskFileError
-from contextlib import contextmanager
 from swift.common.swob import multi_range_iterator
 
 class SproxydException(DiskFileError):
@@ -66,22 +69,14 @@ class ScalitySproxydFileSystem(object):
         """
         debug print
         """
-        #self._logger.debug(msg)
-#       print msg
-        pass
+        self._logger.debug(msg)
 
     def __init__(self, conf, logger):
         self._logger = logger
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
-        host = conf.get('sproxyd_host', 'localhost:81')
-        self.hosts = []
-        if "," in host:
-            self.hosts = host.split(",")
-            random.shuffle(self.hosts)
-        else:
-            self.hosts.append(host)
-        self.host_index = 0
+        self.hosts = conf.get('sproxyd_host', 'localhost:81').split(",")
+        random.shuffle(self.hosts)
         self.path = conf.get('sproxyd_path', '/proxy/chord')
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
@@ -101,11 +96,9 @@ class ScalitySproxydFileSystem(object):
         return conn.getresponse()
 
     def get_next_host(self):
-        host = self.hosts[self.host_index % len(self.hosts)]
-        #XXX shall be a lock there
-        self.host_index = self.host_index + 1
-        couple = host.split(':')
-        return couple[0],couple[1]
+        server = random.choice(self.hosts)
+        (host,port) = server.split(':')
+        return host, port
 
     def get_meta(self, name):
         """
