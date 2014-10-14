@@ -16,7 +16,6 @@
 """ Sproxyd Disk File Interface for Swift Object Server"""
 
 import hashlib
-import httplib
 import pickle
 import base64
 import random
@@ -25,8 +24,7 @@ from contextlib import contextmanager
 from eventlet.timeout import Timeout
 
 from swift.common.bufferedhttp import http_connect_raw
-from swift.common.exceptions import ChunkReadTimeout, \
-    ChunkWriteTimeout, ConnectionTimeout, \
+from swift.common.exceptions import ConnectionTimeout, \
     DiskFileQuarantined, DiskFileNotExist, \
     DiskFileDeleted, DiskFileNotOpen, \
     DiskFileError
@@ -36,7 +34,7 @@ class SproxydException(DiskFileError):
     """
     Sproxyd Exception
     """
-    def __init__(self, msg, ipaddr='', port=0, path='', 
+    def __init__(self, msg, ipaddr='', port=0, path='',
                  http_status=0, http_reason=''):
         Exception.__init__(self, msg)
         self.msg = msg
@@ -97,7 +95,7 @@ class ScalitySproxydFileSystem(object):
 
     def get_next_host(self):
         server = random.choice(self.hosts)
-        (host,port) = server.split(':')
+        (host, port) = server.split(':')
         return host, port
 
     def get_meta(self, name):
@@ -124,7 +122,7 @@ class ScalitySproxydFileSystem(object):
                 else:
                     msg = resp.read()
                     raise SproxydException(
-                        'get_meta: %s' % msg, 
+                        'get_meta: %s' % msg,
                         ipaddr=ipaddr, port=port,
                         path=self.path, http_status=resp.status,
                         http_reason=resp.reason)
@@ -163,7 +161,7 @@ class ScalitySproxydFileSystem(object):
                 elif resp.status == 500:
                     msg = resp.read()
                     raise SproxydException(
-                        'put_meta: %s' % msg, 
+                        'put_meta: %s' % msg,
                         ipaddr=ipaddr, port=port,
                         path=self.path, http_status=resp.status,
                         http_reason=resp.reason)
@@ -193,8 +191,7 @@ class ScalitySproxydFileSystem(object):
                 elif resp.status == 500:
                     msg = resp.read()
                     raise SproxydException(
-                        'del_object: %s' % msg, 
-                        ipaddr=ipaddr, port=port,
+                        'del_object: %s' % msg, ipaddr=ipaddr, port=port,
                         path=self.path, http_status=resp.status,
                         http_reason=resp.reason)
         except (Exception, Timeout) as err:
@@ -228,14 +225,14 @@ class DiskFileWriter(object):
         self._upload_size = 0
         headers = {}
         headers['transfer-encoding'] = "chunked"
-        self._filesystem.debugprint(1, "PUT stream " + 
+        self._filesystem.debugprint(1, "PUT stream " +
                                     filesystem.path + "/" + name)
         try:
             with ConnectionTimeout(filesystem.conn_timeout):
                 (ipaddr, port) = self._filesystem.get_next_host()
                 self._conn = self._filesystem.do_connect(
                     ipaddr, port, 'PUT',
-                    filesystem.path + "/" + name, 
+                    filesystem.path + "/" + name,
                     headers, None, False)
         except (Exception, Timeout) as err:
             raise err
@@ -265,7 +262,7 @@ class DiskFileWriter(object):
             if resp.status != 200:
                 msg = resp.read()
                 raise SproxydException("putting: %s / %s" % (
-                        str(resp.status), str(msg)))        
+                        str(resp.status), str(msg)))
             self._conn.close()
         metadata['name'] = self._name
         self._filesystem.put_meta(self._name, metadata)
@@ -294,7 +291,7 @@ class DiskFileReader(object):
         self._bytes_read = 0
         self._suppress_file_closing = False
         #
-        self._filesystem.debugprint(1, "GET stream " + 
+        self._filesystem.debugprint(1, "GET stream " +
                                     filesystem.path + "/" + name)
         self._conn = None
 
@@ -327,7 +324,7 @@ class DiskFileReader(object):
                 (ipaddr, port) = self._filesystem.get_next_host()
                 self._conn = self._filesystem.do_connect(
                     ipaddr, port, 'GET',
-                    self._filesystem.path + "/" + self._name, 
+                    self._filesystem.path + "/" + self._name,
                     headers, None, False)
         except (Exception, Timeout) as err:
             raise err
@@ -347,7 +344,7 @@ class DiskFileReader(object):
                 (ipaddr, port) = self._filesystem.get_next_host()
                 self._conn = self._filesystem.do_connect(
                     ipaddr, port, 'GET',
-                    self._filesystem.path + "/" + self._name, 
+                    self._filesystem.path + "/" + self._name,
                     headers, None, False)
         except (Exception, Timeout) as err:
             raise err
@@ -457,7 +454,7 @@ class DiskFile(object):
 
         :param keep_cache:
         """
-        dr = DiskFileReader(self._filesystem, self._name, 
+        dr = DiskFileReader(self._filesystem, self._name,
                             int(self._metadata['Content-Length']),
                             self._metadata['ETag'])
         # At this point the reader object is now responsible for
