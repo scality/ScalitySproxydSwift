@@ -64,14 +64,8 @@ class ScalitySproxydFileSystem(object):
     A sproxyd file system scheme.
     """
 
-    def debugprint(self, level, msg):
-        """
-        debug print
-        """
-        self._logger.debug(msg)
-
     def __init__(self, conf, logger):
-        self._logger = logger
+        self.logger = logger
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
         self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
@@ -104,7 +98,7 @@ class ScalitySproxydFileSystem(object):
         """
         Open a connection and get usermd"
         """
-        self.debugprint(1, "HEAD " + self.base_path + name)
+        self.logger.debug("HEAD " + self.base_path + name)
         headers = {}
         conn = None
         try:
@@ -140,7 +134,7 @@ class ScalitySproxydFileSystem(object):
         """
         Connect to sproxyd and put usermd
         """
-        self.debugprint(1, "PUT_meta " + self.base_path + "/" + name)
+        self.logger.debug("PUT_meta " + self.base_path + "/" + name)
         if metadata is None:
             raise SproxydException("no usermd")
         headers = {}
@@ -173,7 +167,7 @@ class ScalitySproxydFileSystem(object):
         """
         Connect to sproxyd and delete object
         """
-        self.debugprint(1, "DELETE " + self.base_path + "/" + name)
+        self.logger.debug("DELETE " + self.base_path + "/" + name)
         headers = {}
         conn = None
         try:
@@ -200,7 +194,7 @@ class ScalitySproxydFileSystem(object):
         """
         Get a diskfile
         """
-        self.debugprint(1, "get_diskfile")
+        self.logger.debug("get_diskfile")
         return DiskFile(self, account, container, obj)
 
 
@@ -221,7 +215,7 @@ class DiskFileWriter(object):
         self._upload_size = 0
         headers = {}
         headers['transfer-encoding'] = "chunked"
-        self._filesystem.debugprint(1, "PUT stream " +
+        self._filesystem.logger.debug("PUT stream " +
                                     filesystem.base_path + "/" + name)
         with ConnectionTimeout(filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.get_next_host()
@@ -236,7 +230,7 @@ class DiskFileWriter(object):
 
         :param chunk: the chunk of data to write as a string object
         """
-        self._filesystem.debugprint(2, "writing")
+        self._filesystem.logger.debug("writing")
         self._conn.send('%x\r\n%s\r\n' % (len(chunk), chunk))
         self._upload_size += len(chunk)
         return self._upload_size
@@ -249,7 +243,7 @@ class DiskFileWriter(object):
         :param extension: extension to be used when making the file
         """
         self._conn.send('0\r\n\r\n')
-        self._filesystem.debugprint(2, "write closing")
+        self._filesystem.logger.debug("write closing")
         if self._conn:
             resp = self._conn.getresponse()
             if resp.status != 200:
@@ -284,7 +278,7 @@ class DiskFileReader(object):
         self._bytes_read = 0
         self._suppress_file_closing = False
         #
-        self._filesystem.debugprint(1, "GET stream " +
+        self._filesystem.logger.debug("GET stream " +
                                     filesystem.base_path + "/" + name)
         self._conn = None
 
@@ -295,7 +289,7 @@ class DiskFileReader(object):
         try:
             self._bytes_read = 0
             while True:
-                self._filesystem.debugprint(2, "reading")
+                self._filesystem.logger.debug("reading")
                 chunk = resp.read(4096)
                 if chunk:
                     if self._iter_etag:
@@ -303,14 +297,14 @@ class DiskFileReader(object):
                     self._bytes_read += len(chunk)
                     yield chunk
                 else:
-                    self._filesystem.debugprint(2, "eof")
+                    self._filesystem.logger.debug("eof")
                     break
         finally:
             if not self._suppress_file_closing:
                 self.close()
 
     def __iter__(self):
-        self._filesystem.debugprint(2, "__iter__")
+        self._filesystem.logger.debug("__iter__")
         headers = {}
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
@@ -328,7 +322,7 @@ class DiskFileReader(object):
         """
         iterate over a range
         """
-        self._filesystem.debugprint(1, "app_iter_range")
+        self._filesystem.logger.debug("app_iter_range")
         headers = {}
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
@@ -347,7 +341,7 @@ class DiskFileReader(object):
         """
         iterate over multiple ranges
         """
-        self._filesystem.debugprint(1, "app_iter_ranges")
+        self._filesystem.logger.debug("app_iter_ranges")
         if not ranges:
             yield ''
         else:
@@ -368,7 +362,7 @@ class DiskFileReader(object):
         """
         Close the file. Will handle quarantining file if necessary.
         """
-        self._filesystem.debugprint(2, "read closing")
+        self._filesystem.logger.debug("read closing")
         if self._conn:
             self._conn.close()
             self._conn = None
