@@ -134,7 +134,7 @@ class ScalitySproxydFileSystem(object):
         """
         Connect to sproxyd and put usermd
         """
-        self.logger.debug("PUT_meta " + self.base_path + "/" + name)
+        self.logger.debug("PUT_meta " + self.base_path + name)
         if metadata is None:
             raise SproxydException("no usermd")
         headers = {}
@@ -167,7 +167,7 @@ class ScalitySproxydFileSystem(object):
         """
         Connect to sproxyd and delete object
         """
-        self.logger.debug("DELETE " + self.base_path + "/" + name)
+        self.logger.debug("DELETE " + self.base_path + name)
         headers = {}
         conn = None
         try:
@@ -216,7 +216,7 @@ class DiskFileWriter(object):
         headers = {}
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " +
-                                    filesystem.base_path + "/" + name)
+                                    filesystem.base_path + name)
         with ConnectionTimeout(filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.get_next_host()
             self._conn = self._filesystem.do_connect(
@@ -279,7 +279,7 @@ class DiskFileReader(object):
         self._suppress_file_closing = False
         #
         self._filesystem.logger.debug("GET stream " +
-                                    filesystem.base_path + "/" + name)
+                                    filesystem.base_path + name)
         self._conn = None
 
     def stream(self, resp):
