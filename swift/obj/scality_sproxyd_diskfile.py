@@ -74,9 +74,9 @@ class ScalitySproxydFileSystem(object):
         self._logger = logger
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
+        self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
         self.hosts = conf.get('sproxyd_host', 'localhost:81').split(",")
         random.shuffle(self.hosts)
-        self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
@@ -131,8 +131,6 @@ class ScalitySproxydFileSystem(object):
         except (EOFError) as err:
             print "EOFError"
             return None
-        except (Exception, Timeout) as err:
-            raise err
         finally:
             if conn:
                 conn.close()
@@ -167,8 +165,6 @@ class ScalitySproxydFileSystem(object):
                         ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
                         http_reason=resp.reason)
-        except (Exception, Timeout) as err:
-            raise err
         finally:
             if conn:
                 conn.close()
@@ -196,8 +192,6 @@ class ScalitySproxydFileSystem(object):
                         'del_object: %s' % msg, ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
                         http_reason=resp.reason)
-        except (Exception, Timeout) as err:
-            raise err
         finally:
             if conn:
                 conn.close()
@@ -229,15 +223,12 @@ class DiskFileWriter(object):
         headers['transfer-encoding'] = "chunked"
         self._filesystem.debugprint(1, "PUT stream " +
                                     filesystem.base_path + "/" + name)
-        try:
-            with ConnectionTimeout(filesystem.conn_timeout):
-                (ipaddr, port) = self._filesystem.get_next_host()
-                self._conn = self._filesystem.do_connect(
-                    ipaddr, port, 'PUT',
-                    name,
-                    headers, None, False)
-        except (Exception, Timeout) as err:
-            raise err
+        with ConnectionTimeout(filesystem.conn_timeout):
+            (ipaddr, port) = self._filesystem.get_next_host()
+            self._conn = self._filesystem.do_connect(
+                ipaddr, port, 'PUT',
+                name,
+                headers, None, False)
 
     def write(self, chunk):
         """
@@ -321,15 +312,14 @@ class DiskFileReader(object):
     def __iter__(self):
         self._filesystem.debugprint(2, "__iter__")
         headers = {}
-        try:
-            with ConnectionTimeout(self._filesystem.conn_timeout):
-                (ipaddr, port) = self._filesystem.get_next_host()
-                self._conn = self._filesystem.do_connect(
-                    ipaddr, port, 'GET',
-                    self._name,
-                    headers, None, False)
-        except (Exception, Timeout) as err:
-            raise err
+
+        with ConnectionTimeout(self._filesystem.conn_timeout):
+            (ipaddr, port) = self._filesystem.get_next_host()
+            self._conn = self._filesystem.do_connect(
+                ipaddr, port, 'GET',
+                self._name,
+                headers, None, False)
+
         resp = self._conn.getresponse()
         for chunk in self.stream(resp):
             yield chunk
@@ -341,15 +331,14 @@ class DiskFileReader(object):
         self._filesystem.debugprint(1, "app_iter_range")
         headers = {}
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
-        try:
-            with ConnectionTimeout(self._filesystem.conn_timeout):
-                (ipaddr, port) = self._filesystem.get_next_host()
-                self._conn = self._filesystem.do_connect(
-                    ipaddr, port, 'GET',
-                    self._name,
-                    headers, None, False)
-        except (Exception, Timeout) as err:
-            raise err
+
+        with ConnectionTimeout(self._filesystem.conn_timeout):
+            (ipaddr, port) = self._filesystem.get_next_host()
+            self._conn = self._filesystem.do_connect(
+                ipaddr, port, 'GET',
+                self._name,
+                headers, None, False)
+
         resp = self._conn.getresponse()
         for chunk in self.stream(resp):
             yield chunk
