@@ -49,7 +49,7 @@ class SproxydException(DiskFileError):
         if self.ipaddr:
             self.msg += ' %s' % self.ipaddr
         if self.port:
-            self.msg += ':%d' % self.port
+            self.msg += ':%d' % int(self.port)
         if self.base_path:
             self.msg += '%s' % self.base_path
         if self.http_status:
@@ -128,13 +128,14 @@ class ScalitySproxydFileSystem(object):
         finally:
             if conn:
                 conn.close()
+        self.logger.debug("Metadata for " + self.base_path + name + " : " + str(metadata))
         return metadata
 
     def put_meta(self, name, metadata):
         """
         Connect to sproxyd and put usermd
         """
-        self.logger.debug("PUT_meta " + self.base_path + name)
+        self.logger.debug("PUT_meta " + self.base_path + name + " : " + str(metadata))
         if metadata is None:
             raise SproxydException("no usermd")
         headers = {}
