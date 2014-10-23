@@ -245,12 +245,13 @@ class DiskFileWriter(object):
         """
         self._conn.send('0\r\n\r\n')
         self._filesystem.logger.debug("write closing")
-        if self._conn:
+        try:
             resp = self._conn.getresponse()
             if resp.status != 200:
                 msg = resp.read()
                 raise SproxydException("putting: %s / %s" % (
                         str(resp.status), str(msg)))
+        finally:
             self._conn.close()
         metadata['name'] = self._name
         self._filesystem.put_meta(self._name, metadata)
