@@ -153,7 +153,7 @@ class ScalitySproxydFileSystem(object):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200:
                     resp.read()
-                elif resp.status == 500:
+                else:
                     msg = resp.read()
                     raise SproxydException(
                         'put_meta: %s' % msg,
@@ -181,7 +181,7 @@ class ScalitySproxydFileSystem(object):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200 or resp.status == 404:
                     resp.read()
-                elif resp.status == 500:
+                else:
                     msg = resp.read()
                     raise SproxydException(
                         'del_object: %s' % msg, ipaddr=ipaddr, port=port,
