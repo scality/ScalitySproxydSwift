@@ -128,7 +128,7 @@ class ScalitySproxydFileSystem(object):
         finally:
             if conn:
                 conn.close()
-        self.logger.debug("Metadata for " + self.base_path + name + " : " + str(metadata))
+        self.logger.debug("Metadata retrieved for " + self.base_path + name + " : " + str(metadata))
         return metadata
 
     def put_meta(self, name, metadata):
@@ -163,6 +163,7 @@ class ScalitySproxydFileSystem(object):
         finally:
             if conn:
                 conn.close()
+        self.logger.debug("Metadata stored for " + self.base_path + name + " : " + str(metadata))
 
     def del_object(self, name):
         """
@@ -216,8 +217,7 @@ class DiskFileWriter(object):
         self._upload_size = 0
         headers = {}
         headers['transfer-encoding'] = "chunked"
-        self._filesystem.logger.debug("PUT stream " +
-                                    filesystem.base_path + name)
+        self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
         with ConnectionTimeout(filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.get_next_host()
             self._conn = self._filesystem.do_connect(
@@ -231,7 +231,7 @@ class DiskFileWriter(object):
 
         :param chunk: the chunk of data to write as a string object
         """
-        self._filesystem.logger.debug("writing")
+        self._filesystem.logger.debug("writing " + self._filesystem.base_path + self._name)
         self._conn.send('%x\r\n%s\r\n' % (len(chunk), chunk))
         self._upload_size += len(chunk)
         return self._upload_size
@@ -244,7 +244,7 @@ class DiskFileWriter(object):
         :param extension: extension to be used when making the file
         """
         self._conn.send('0\r\n\r\n')
-        self._filesystem.logger.debug("write closing")
+        self._filesystem.logger.debug("write closing for : " + self._filesystem.base_path + self._name)
         try:
             resp = self._conn.getresponse()
             if resp.status != 200:
@@ -254,6 +254,7 @@ class DiskFileWriter(object):
         finally:
             self._conn.close()
         metadata['name'] = self._name
+        self._filesystem.logger.debug("data successfully written for object : " + self._filesystem.base_path + self._name)
         self._filesystem.put_meta(self._name, metadata)
 
 
@@ -291,7 +292,7 @@ class DiskFileReader(object):
         try:
             self._bytes_read = 0
             while True:
-                self._filesystem.logger.debug("reading")
+                self._filesystem.logger.debug("reading " + self._filesystem.base_path + self._name)
                 chunk = resp.read(4096)
                 if chunk:
                     if self._iter_etag:
@@ -299,14 +300,14 @@ class DiskFileReader(object):
                     self._bytes_read += len(chunk)
                     yield chunk
                 else:
-                    self._filesystem.logger.debug("eof")
+                    self._filesystem.logger.debug("eof " + self._filesystem.base_path + self._name)
                     break
         finally:
             if not self._suppress_file_closing:
                 self.close()
 
     def __iter__(self):
-        self._filesystem.logger.debug("__iter__")
+        self._filesystem.logger.debug("__iter__ over " + self._filesystem.base_path + self._name)
         headers = {}
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
@@ -364,7 +365,7 @@ class DiskFileReader(object):
         """
         Close the file. Will handle quarantining file if necessary.
         """
-        self._filesystem.logger.debug("read closing")
+        self._filesystem.logger.debug("read closing for " + self._filesystem.base_path + self._name)
         if self._conn:
             self._conn.close()
             self._conn = None
