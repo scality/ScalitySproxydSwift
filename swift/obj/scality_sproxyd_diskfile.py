@@ -98,7 +98,7 @@ class ScalitySproxydFileSystem(object):
         """
         Open a connection and get usermd"
         """
-        self.logger.debug("HEAD " + self.base_path + name)
+        self.logger.debug("GET_meta " + self.base_path + name)
         headers = {}
         conn = None
         try:
@@ -169,7 +169,7 @@ class ScalitySproxydFileSystem(object):
         """
         Connect to sproxyd and delete object
         """
-        self.logger.debug("DELETE " + self.base_path + name)
+        self.logger.debug("del_object " + self.base_path + name)
         headers = {}
         conn = None
         try:
