@@ -59,6 +59,17 @@ class SproxydException(DiskFileError):
         else:
             return '%s %s' % (self.msg, ''.join(suffix))
 
+    def __repr__(self):
+        args = ', '.join('%s=%r' % arg for arg in [
+            ('msg', self.msg),
+            ('ipaddr', self.ipaddr),
+            ('port', self.port),
+            ('path', self.base_path),
+            ('http_status', self.http_status),
+            ('http_reason', self.http_reason)])
+
+        return 'SproxydException(%s)' % args
+
 
 class ScalitySproxydFileSystem(object):
     """
