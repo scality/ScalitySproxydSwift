@@ -46,17 +46,17 @@ class SproxydException(DiskFileError):
         self.http_reason = http_reason
 
     def __str__(self):
-        if self.ipaddr:
-            self.msg += ' %s' % self.ipaddr
-        if self.port:
-            self.msg += ':%d' % int(self.port)
-        if self.base_path:
-            self.msg += '%s' % self.base_path
-        if self.http_status:
-            self.msg += ' %d' % self.http_status
-        if self.http_reason:
-            self.msg += ' %s' % self.http_reason
-        return self.msg
+        suffix = filter(bool, [
+            self.ipaddr if self.ipaddr else None,
+            ':%d' % int(self.port) if self.port else None,
+            self.base_path if self.base_path else None,
+            ' %d' % self.http_status if self.http_status else None,
+            ' %s' % self.http_reason if self.http_reason else None])
+
+        if not suffix:
+            return self.msg
+        else:
+            return '%s %s' % (self.msg, ''.join(suffix))
 
 
 class ScalitySproxydFileSystem(object):
