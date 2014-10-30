@@ -83,12 +83,6 @@ class ScalitySproxydFileSystem(object):
             safe_path, headers, query_string, ssl)
         return conn
 
-    def conn_getresponse(self, conn):
-        """
-        stubable function for getting conn responses
-        """
-        return conn.getresponse()
-
     def get_next_host(self):
         server = random.choice(self.hosts)
         (host, port) = server.split(':')
@@ -108,7 +102,7 @@ class ScalitySproxydFileSystem(object):
                     ipaddr, port, 'HEAD',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
+                resp = conn.getresponse()
                 if resp.status == 200:
                     headers = dict(resp.getheaders())
                     usermd = base64.b64decode(headers["x-scal-usermd"])
@@ -150,7 +144,7 @@ class ScalitySproxydFileSystem(object):
                     ipaddr, port, 'PUT',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
+                resp = conn.getresponse()
                 if resp.status == 200:
                     resp.read()
                 else:
@@ -179,7 +173,7 @@ class ScalitySproxydFileSystem(object):
                     ipaddr, port, 'DELETE',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
+                resp = conn.getresponse()
                 if resp.status == 200 or resp.status == 404:
                     resp.read()
                 else:
