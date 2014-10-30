@@ -20,6 +20,7 @@ import pickle
 import base64
 import random
 import urllib
+import itertools
 from contextlib import contextmanager
 
 from eventlet.timeout import Timeout
@@ -69,8 +70,8 @@ class ScalitySproxydFileSystem(object):
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
         self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
-        self.hosts = [s.strip() for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
-        random.shuffle(self.hosts)
+        hosts = [s.strip().split(':') for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
+        self.hosts = itertools.cycle(hosts)
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
@@ -83,11 +84,6 @@ class ScalitySproxydFileSystem(object):
             safe_path, headers, query_string, ssl)
         return conn
 
-    def get_next_host(self):
-        server = random.choice(self.hosts)
-        (host, port) = server.split(':')
-        return host, port
-
     def get_meta(self, name):
         """
         Open a connection and get usermd"
@@ -97,7 +93,7 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'HEAD',
                     name, headers, None, False)
@@ -139,7 +135,7 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'PUT',
                     name, headers, None, False)
@@ -168,7 +164,7 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'DELETE',
                     name, headers, None, False)
@@ -213,7 +209,7 @@ class DiskFileWriter(object):
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
         with ConnectionTimeout(filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT',
                 name,
@@ -305,7 +301,7 @@ class DiskFileReader(object):
         headers = {}
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
                 self._name,
@@ -324,7 +320,7 @@ class DiskFileReader(object):
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
                 self._name,
