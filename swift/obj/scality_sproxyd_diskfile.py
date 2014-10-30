@@ -69,7 +69,7 @@ class ScalitySproxydFileSystem(object):
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
         self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
-        self.hosts = conf.get('sproxyd_host', 'localhost:81').split(",")
+        self.hosts = [s.strip() for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
         random.shuffle(self.hosts)
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
