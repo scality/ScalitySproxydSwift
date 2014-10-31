@@ -1,0 +1,12 @@
+language: python
+
+install:
+ - pip install tox
+
+script:
+ - tox
+
+env:
+ - TOXENV=py26
+ - TOXENV=py27
+ - TOXENV=pep8
