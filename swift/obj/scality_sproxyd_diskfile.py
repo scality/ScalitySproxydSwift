@@ -18,7 +18,6 @@
 import hashlib
 import pickle
 import base64
-import random
 import urllib
 import itertools
 from contextlib import contextmanager
@@ -27,8 +26,7 @@ from eventlet.timeout import Timeout
 
 from swift.common.bufferedhttp import http_connect_raw
 from swift.common.exceptions import ConnectionTimeout, \
-    DiskFileQuarantined, DiskFileNotExist, \
-    DiskFileDeleted, DiskFileNotOpen, \
+    DiskFileQuarantined, DiskFileDeleted, DiskFileNotOpen, \
     DiskFileError
 from swift.common.swob import multi_range_iterator
 
@@ -38,7 +36,7 @@ class SproxydException(DiskFileError):
     """
     def __init__(self, msg, ipaddr='', port=0, path='',
                  http_status=0, http_reason=''):
-        Exception.__init__(self, msg)
+        super(SproxydException, self).__init__(msg)
         self.msg = msg
         self.ipaddr = ipaddr
         self.port = port
