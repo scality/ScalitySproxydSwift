@@ -18,16 +18,15 @@
 import hashlib
 import pickle
 import base64
-import random
 import urllib
+import itertools
 from contextlib import contextmanager
 
 from eventlet.timeout import Timeout
 
 from swift.common.bufferedhttp import http_connect_raw
 from swift.common.exceptions import ConnectionTimeout, \
-    DiskFileQuarantined, DiskFileNotExist, \
-    DiskFileDeleted, DiskFileNotOpen, \
+    DiskFileQuarantined, DiskFileDeleted, DiskFileNotOpen, \
     DiskFileError
 from swift.common.swob import multi_range_iterator
 
@@ -37,7 +36,7 @@ class SproxydException(DiskFileError):
     """
     def __init__(self, msg, ipaddr='', port=0, path='',
                  http_status=0, http_reason=''):
-        Exception.__init__(self, msg)
+        super(SproxydException, self).__init__(msg)
         self.msg = msg
         self.ipaddr = ipaddr
         self.port = port
@@ -46,17 +45,28 @@ class SproxydException(DiskFileError):
         self.http_reason = http_reason
 
     def __str__(self):
-        if self.ipaddr:
-            self.msg += ' %s' % self.ipaddr
-        if self.port:
-            self.msg += ':%d' % int(self.port)
-        if self.base_path:
-            self.msg += '%s' % self.base_path
-        if self.http_status:
-            self.msg += ' %d' % self.http_status
-        if self.http_reason:
-            self.msg += ' %s' % self.http_reason
-        return self.msg
+        suffix = filter(bool, [
+            self.ipaddr if self.ipaddr else None,
+            ':%d' % int(self.port) if self.port else None,
+            self.base_path if self.base_path else None,
+            ' %d' % self.http_status if self.http_status else None,
+            ' %s' % self.http_reason if self.http_reason else None])
+
+        if not suffix:
+            return self.msg
+        else:
+            return '%s %s' % (self.msg, ''.join(suffix))
+
+    def __repr__(self):
+        args = ', '.join('%s=%r' % arg for arg in [
+            ('msg', self.msg),
+            ('ipaddr', self.ipaddr),
+            ('port', self.port),
+            ('path', self.base_path),
+            ('http_status', self.http_status),
+            ('http_reason', self.http_reason)])
+
+        return 'SproxydException(%s)' % args
 
 
 class ScalitySproxydFileSystem(object):
@@ -69,8 +79,8 @@ class ScalitySproxydFileSystem(object):
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
         self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
-        self.hosts = conf.get('sproxyd_host', 'localhost:81').split(",")
-        random.shuffle(self.hosts)
+        hosts = [s.strip().split(':') for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
+        self.hosts = itertools.cycle(hosts)
 
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
@@ -83,10 +93,11 @@ class ScalitySproxydFileSystem(object):
             safe_path, headers, query_string, ssl)
         return conn
 
-    def get_next_host(self):
-        server = random.choice(self.hosts)
-        (host, port) = server.split(':')
-        return host, port
+    def conn_getresponse(self, conn):
+        """
+        stubable function for getting conn responses
+        """
+        return conn.getresponse()
 
     def get_meta(self, name):
         """
@@ -97,12 +108,12 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'HEAD',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = conn.getresponse()
+                resp = self.conn_getresponse(conn)
                 if resp.status == 200:
                     headers = dict(resp.getheaders())
                     usermd = base64.b64decode(headers["x-scal-usermd"])
@@ -139,12 +150,12 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'PUT',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = conn.getresponse()
+                resp = self.conn_getresponse(conn)
                 if resp.status == 200:
                     resp.read()
                 else:
@@ -168,12 +179,12 @@ class ScalitySproxydFileSystem(object):
         conn = None
         try:
             with ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.get_next_host()
+                (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'DELETE',
                     name, headers, None, False)
             with Timeout(self.proxy_timeout):
-                resp = conn.getresponse()
+                resp = self.conn_getresponse(conn)
                 if resp.status == 200 or resp.status == 404:
                     resp.read()
                 else:
@@ -213,7 +224,7 @@ class DiskFileWriter(object):
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
         with ConnectionTimeout(filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT',
                 name,
@@ -305,7 +316,7 @@ class DiskFileReader(object):
         headers = {}
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
                 self._name,
@@ -324,7 +335,7 @@ class DiskFileReader(object):
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
         with ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.get_next_host()
+            (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
                 self._name,
