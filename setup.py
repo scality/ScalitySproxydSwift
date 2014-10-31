@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (c) 2014 Scality
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,17 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# THIS FILE IS MANAGED BY THE GLOBAL REQUIREMENTS REPO - DO NOT EDIT
 import setuptools
 
-# In python < 2.7.4, a lazy loading of package `pbr` will break
-# setuptools if some other modules registered functions in `atexit`.
-# solution from: http://bugs.python.org/issue15881#msg170215
-try:
-    import multiprocessing  # noqa
-except ImportError:
-    pass
-
 setuptools.setup(
-    setup_requires=['pbr'],
-    pbr=True)
+    name='swift-scality-backend',
+    version='0.1',
+    description='Scality Ring backend for OpenStack Swift',
+    url='http://www.scality.com/',
+    author='Scality Openstack Engineering Team',
+    author_email='openstack-eng@scality.com',
+    license='Apache License (2.0)',
+    packages=['swift_scality_backend'],
+    classifiers=[
+        'License :: OSI Approved :: Apache Software License',
+        'Operating System :: POSIX :: Linux',
+        'Programming Language :: Python :: 2.7'],
+    install_requires=['swift>=2.0.0', 'eventlet>=0.9.15'],
+    entry_points={
+        'paste.app_factory': [
+            'scality_sproxyd_object=swift_scality_backend.scality_sproxyd_server:app_factory'],
+    },
+)
+
