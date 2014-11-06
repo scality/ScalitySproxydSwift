@@ -32,7 +32,7 @@ setuptools.setup(
     install_requires=['swift>=2.0.0', 'eventlet>=0.9.15'],
     entry_points={
         'paste.app_factory': [
-            'scality_sproxyd_object=swift_scality_backend.scality_sproxyd_server:app_factory'],
+            'scality_sproxyd_object=swift_scality_backend.server:app_factory'],
     },
 )
 

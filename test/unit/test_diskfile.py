@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for swift_scality_backend.scality_sproxyd_diskfile"""
+"""Tests for swift_scality_backend.diskfile"""
 
 import os
 import stat
@@ -37,8 +37,8 @@ from swift.common.utils import ThreadPool
 
 import swift.common.utils
 from swift.common.utils import normalize_timestamp
-import swift_scality_backend.scality_sproxyd_diskfile
-from swift_scality_backend.scality_sproxyd_diskfile import DiskFileWriter, DiskFile, DiskFileReader, ScalitySproxydFileSystem
+import swift_scality_backend.diskfile
+from swift_scality_backend.diskfile import DiskFileWriter, DiskFile, DiskFileReader, ScalitySproxydFileSystem
 
 _metadata = {}
 CONN_TIMEOUT=1
@@ -131,7 +131,7 @@ class MockException(Exception):
     pass
 
 class TestScalitySproxydDiskFile(unittest.TestCase):
-    """ Tests for swift_scality_backend.scality_sproxyd_diskfile """
+    """ Tests for swift_scality_backend.diskfile """
 
     def setUp(self):
         self._orig_tpool_exc = tpool.execute
@@ -145,8 +145,8 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
                          port=4242,
                          path="/proxy/foo")
         self.filesystem = ScalitySproxydFileSystem(self.conf, self.fake_logger)
-        saved_do_connect = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.do_connect
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.do_connect = _mock_do_connect
+        saved_do_connect = swift_scality_backend.diskfile.ScalitySproxydFileSystem.do_connect
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.do_connect = _mock_do_connect
 
     def tearDown(self):
         tpool.execute = self._orig_tpool_exc
@@ -167,69 +167,69 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
     def test_get_meta(self):
         debuglog("test_get_meta")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_get_meta = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.get_meta
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.get_meta = _mock_get_meta
+        saved_get_meta = swift_scality_backend.diskfile.ScalitySproxydFileSystem.get_meta
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.get_meta = _mock_get_meta
         fake_put_meta("meta1", "value1")
         metadata = gdf.read_metadata()
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.get_meta = saved_get_meta
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.get_meta = saved_get_meta
 
     def test_read_metadata_404(self):
         debuglog("test_read_metadata_404")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
         try:
             metadata = gdf.read_metadata()
         except DiskFileDeleted:
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_read_metadata_500(self):
         debuglog("test_read_metadata_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         try:
             metadata = gdf.read_metadata()
         except DiskFileError:
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_read_metadata_timeout(self):
         debuglog("test_read_metadata_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
         try:
             metadata = gdf.read_metadata()
         except Timeout:
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_write_metadata_none(self):
         debuglog("test_write_metadata_none")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         try:
             gdf.write_metadata(None)
         except DiskFileError:
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_write_metadata_500(self):
         debuglog("test_write_metadata_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         metadata = {'foo': 'bar', 'qux': 'baz'}
         try:
             gdf.write_metadata(metadata)
@@ -237,13 +237,13 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_write_metadata_timeout(self):
         debuglog("test_write_metadata_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
         metadata = {'foo': 'bar', 'qux': 'baz'}
         try:
             gdf.write_metadata(metadata)
@@ -251,13 +251,13 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_delete_404(self):
         debuglog("test_delete_404")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
@@ -265,13 +265,13 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
             assert False
         else:
             pass
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_delete_500(self):
         debuglog("test_delete_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
@@ -279,13 +279,13 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_delete_timeout(self):
         debuglog("test_delete_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
+        saved_conn_getresponse = swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
@@ -293,7 +293,7 @@ class TestScalitySproxydDiskFile(unittest.TestCase):
             pass
         else:
             assert False
-        swift_scality_backend.scality_sproxyd_diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        swift_scality_backend.diskfile.ScalitySproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
 
 #test connection to sproxyd

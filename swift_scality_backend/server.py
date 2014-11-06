@@ -26,7 +26,7 @@ from swift.common.exceptions import ConnectionTimeout
 from swift.common.http import is_success
 from swift.obj import server
 
-from swift_scality_backend.scality_sproxyd_diskfile import ScalitySproxydFileSystem
+from swift_scality_backend.diskfile import ScalitySproxydFileSystem
 
 
 class ObjectController(server.ObjectController):
