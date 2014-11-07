@@ -26,7 +26,7 @@ from swift.common.exceptions import ConnectionTimeout
 from swift.common.http import is_success
 from swift.obj import server
 
-from swift_scality_backend.diskfile import ScalitySproxydFileSystem
+from swift_scality_backend.diskfile import SproxydFileSystem
 
 
 class ObjectController(server.ObjectController):
@@ -38,7 +38,7 @@ class ObjectController(server.ObjectController):
         """
         :param conf: WSGI configuration parameter
         """
-        self._filesystem = ScalitySproxydFileSystem(conf, self.logger)
+        self._filesystem = SproxydFileSystem(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
                      policy_idx, **kwargs):

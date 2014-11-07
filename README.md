@@ -10,7 +10,7 @@ Installation
 2. Modify your `object-server.conf` to use the new object server:
    ```
 [app:object-server]
-use = egg:swift_scality_backend#scality_sproxyd_object
+use = egg:swift_scality_backend#sproxyd_object
 ```
 
 3. Set the Sproxy host and Sproxy path to connect to in the `[app:object-server]` section in the same file:

@@ -70,7 +70,7 @@ class SproxydException(DiskFileError):
         return 'SproxydException(%s)' % args
 
 
-class ScalitySproxydFileSystem(object):
+class SproxydFileSystem(object):
     """
     A sproxyd file system scheme.
     """
