@@ -31,6 +31,8 @@ from swift.common.exceptions import ConnectionTimeout, \
     DiskFileError
 from swift.common.swob import multi_range_iterator
 
+from swift_scality_backend import utils
+
 class SproxydException(DiskFileError):
     """
     Sproxyd Exception
@@ -81,8 +83,17 @@ class SproxydFileSystem(object):
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
         self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
         hosts = [s.strip().split(':') for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
+        self.hosts_list = hosts
         self.hosts = itertools.cycle(hosts)
 
+    def __repr__(self):
+        ret = 'SproxydFileSystem(conn_timeout=%r, proxy_timeout=%r, ' + \
+            'base_path=%r, hosts_list=%r)'
+        return ret % (
+            self.conn_timeout, self.proxy_timeout, self.base_path,
+            self.hosts_list)
+
+    @utils.trace
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
         """
@@ -100,6 +111,7 @@ class SproxydFileSystem(object):
         """
         return conn.getresponse()
 
+    @utils.trace
     def get_meta(self, name):
         """
         Open a connection and get usermd"
@@ -137,6 +149,7 @@ class SproxydFileSystem(object):
         self.logger.debug("Metadata retrieved for " + self.base_path + name + " : " + str(metadata))
         return metadata
 
+    @utils.trace
     def put_meta(self, name, metadata):
         """
         Connect to sproxyd and put usermd
@@ -171,6 +184,7 @@ class SproxydFileSystem(object):
                 conn.close()
         self.logger.debug("Metadata stored for " + self.base_path + name + " : " + str(metadata))
 
+    @utils.trace
     def del_object(self, name):
         """
         Connect to sproxyd and delete object
@@ -198,6 +212,7 @@ class SproxydFileSystem(object):
             if conn:
                 conn.close()
 
+    @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
         """
         Get a diskfile
@@ -231,6 +246,8 @@ class DiskFileWriter(object):
                 name,
                 headers, None, False)
 
+    logger = property(lambda self: self._filesystem.logger)
+
     def write(self, chunk):
         """
         Write a chunk of data
@@ -242,6 +259,7 @@ class DiskFileWriter(object):
         self._upload_size += len(chunk)
         return self._upload_size
 
+    @utils.trace
     def put(self, metadata):
         """
         Make the final association
@@ -291,6 +309,9 @@ class DiskFileReader(object):
                                     filesystem.base_path + name)
         self._conn = None
 
+    logger = property(lambda self: self._filesystem.logger)
+
+    @utils.trace
     def stream(self, resp):
         """
         stream input
@@ -327,6 +348,7 @@ class DiskFileReader(object):
         for chunk in self.stream(resp):
             yield chunk
 
+    @utils.trace
     def app_iter_range(self, start, stop):
         """
         iterate over a range
@@ -346,6 +368,7 @@ class DiskFileReader(object):
         for chunk in self.stream(resp):
             yield chunk
 
+    @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
         """
         iterate over multiple ranges
@@ -367,6 +390,7 @@ class DiskFileReader(object):
                 except DiskFileQuarantined:
                     pass
 
+    @utils.trace
     def close(self):
         """
         Close the file. Will handle quarantining file if necessary.
@@ -395,6 +419,18 @@ class DiskFile(object):
         self._metadata = None
         self._filesystem = filesystem
 
+        self._account = account
+        self._container = container
+        self._obj = obj
+
+    logger = property(lambda self: self._filesystem.logger)
+
+    def __repr__(self):
+        ret = 'DiskFile(filesystem=%r, account=%r, container=%r, obj=%r)'
+        return ret % (self._filesystem, self._account, self._container,
+            self._obj)
+
+    @utils.trace
     def open(self):
         """
         Open the file and read the metadata.
@@ -412,15 +448,18 @@ class DiskFile(object):
         self._metadata = metadata or {}
         return self
 
+    @utils.trace
     def __enter__(self):
         if self._metadata is None:
             raise DiskFileNotOpen()
         return self
 
+    @utils.trace
     def __exit__(self, t, v, tb):
         """
         """
 
+    @utils.trace
     def get_metadata(self):
         """
         Provide the metadata for an object as a dictionary.
@@ -431,6 +470,7 @@ class DiskFile(object):
             raise DiskFileNotOpen()
         return self._metadata
 
+    @utils.trace
     def read_metadata(self):
         """
         Return the metadata for an object.
@@ -440,6 +480,7 @@ class DiskFile(object):
         with self.open():
             return self.get_metadata()
 
+    @utils.trace
     def reader(self, keep_cache=False):
         """
         Return a swift.common.swob.Response class compatible "app_iter"
@@ -455,6 +496,7 @@ class DiskFile(object):
         # the file pointer.
         return dr
 
+    @utils.trace
     @contextmanager
     def create(self, size=None):
         """
@@ -467,12 +509,14 @@ class DiskFile(object):
         """
         yield DiskFileWriter(self._filesystem, self._name)
 
+    @utils.trace
     def write_metadata(self, metadata):
         """
         Write a block of metadata to an object.
         """
         self._filesystem.put_meta(self._name, metadata)
 
+    @utils.trace
     def delete(self, timestamp):
         """
         Perform a delete for the given object in the given container under the
