@@ -19,15 +19,31 @@ import functools
 
 DEFAULT_LOGGER = logging.getLogger(__name__)
 
-TRACE = 5
-logging.addLevelName(TRACE, 'TRACE')
+# Monkey-patch Python logging to support `trace` logging
+def monkey_patch_log_trace(level):
+    '''Monkey-patch `trace` support onto `logging.Logger`'''
 
-def log_trace(self, msg, *args, **kwargs):
-    if self.isEnabledFor(TRACE):
-        self._log(TRACE, msg, args, **kwargs)
+    assert not hasattr(logging.Logger, 'trace')
 
-logging.Logger.trace = log_trace
-del log_trace
+    logging.addLevelName(level, 'TRACE')
+
+    def trace(self, msg, *args, **kwargs):
+        '''Logo 'msg % args' with severity 'TRACE'.
+
+        To pass exception information, use the keyword argument exc_info with a
+        true value, e.g.
+
+        logger.trace("Houston, we have a %s", "thorny problem", exc_info=1)
+        '''
+
+        if self.isEnabledFor(level):
+            self._log(level, msg, args, **kwargs)
+
+    logging.Logger.trace = trace
+
+monkey_patch_log_trace(5)
+del monkey_patch_log_trace
+# End of monkey-patch
 
 def trace(f):
     tid = [0]
