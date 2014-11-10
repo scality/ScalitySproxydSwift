@@ -20,6 +20,8 @@ import functools
 DEFAULT_LOGGER = logging.getLogger(__name__)
 
 # Monkey-patch Python logging to support `trace` logging
+TRACE_LEVEL = 5
+
 def monkey_patch_log_trace(level):
     '''Monkey-patch `trace` support onto `logging.Logger`'''
 
@@ -41,7 +43,7 @@ def monkey_patch_log_trace(level):
 
     logging.Logger.trace = trace
 
-monkey_patch_log_trace(5)
+monkey_patch_log_trace(TRACE_LEVEL)
 del monkey_patch_log_trace
 # End of monkey-patch
 
@@ -62,9 +64,6 @@ def trace(f):
 
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
-        # Get & bump call identifier, assume non-preemptive threading
-        ctid, tid[0] = tid[0], tid[0] + 1
-
         maybe_self = None
 
         if len(args) > 0:
@@ -75,6 +74,14 @@ def trace(f):
         assert maybe_self is not None
 
         logger = getattr(maybe_self, 'logger', DEFAULT_LOGGER)
+
+        # Fast-path, don't do any of the 'expensive' things below if the trace
+        # log level isn't enabled anyway
+        if not logger.isEnabledFor(TRACE_LEVEL):
+            return f(*args, **kwargs)
+
+        # Get & bump call identifier, assume non-preemptive threading
+        ctid, tid[0] = tid[0], tid[0] + 1
 
         all_args = inspect.getcallargs(f, *args, **kwargs)
         logger.trace('==> %s (%d): call %r', name, ctid, all_args)
