@@ -1,4 +1,3 @@
-#-*- coding:utf-8 -*-
 # Copyright (c) 2010-2012 OpenStack Foundation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,60 +15,41 @@
 
 """Tests for swift_scality_backend.diskfile"""
 
-import os
-import stat
-import errno
 import logging
 import unittest
-import tempfile
-import shutil
-import mock
-import time
-import eventlet
-from eventlet import Timeout
-from eventlet import tpool
-from mock import Mock, patch
-from hashlib import md5
-from copy import deepcopy
-from swift.common.exceptions import DiskFileNotExist, DiskFileError, \
-    DiskFileNoSpace, DiskFileNotOpen, DiskFileDeleted
-from swift.common.utils import ThreadPool
 
-import swift.common.utils
-from swift.common.utils import normalize_timestamp
+import eventlet
+import swift.common.exceptions
+
 import swift_scality_backend.diskfile
-from swift_scality_backend.diskfile import DiskFileWriter, DiskFile, DiskFileReader, SproxydFileSystem
 
 _metadata = {}
-CONN_TIMEOUT=1
-PROXY_TIMEOUT=1
+CONN_TIMEOUT = 1
+PROXY_TIMEOUT = 1
+
 
 def _mock_get_meta(self, obj):
-    """
-    get the metadata from a fake dictionary
-    """
+    """get the metadata from a fake dictionary."""
     global _metadata
     return _metadata
 
+
 def fake_put_meta(name, metadata):
-    """
-    set the metadata to a fake dictionary
-    """
+    """set the metadata to a fake dictionary."""
     global _metadata
     _metadata[name] = metadata
 
+
 class FakeHTTPResponse:
-    """
-    fake response class for faking HTTP answers
-    """
+    """fake response class for faking HTTP answers."""
     def __init__(self):
         self.status = 0
         self.msg = ""
         self.reason = ""
 
     def read(self):
-        """Return error message"""
-        return self.msg;
+        """Return error message."""
+        return self.msg
 
     def getheaders(self):
         """Return list of (header, value) tuples."""
@@ -79,77 +59,73 @@ class FakeHTTPResponse:
 
 
 def _mock_conn_getresponse_404(self, conn):
-    """
-    Simulate an error 404
-    """
+    """Simulate an error 404."""
     resp = FakeHTTPResponse()
     resp.status = 404
     return resp
 
+
 def _mock_conn_getresponse_500(self, conn):
-    """
-    Simulate an error 500
-    """
+    """Simulate an error 500."""
     resp = FakeHTTPResponse()
     resp.status = 500
     resp.msg = "Internal Server Error"
     resp.reason = "Sproxyd Internal Failure"
     return resp
 
+
 def _mock_conn_getresponse_timeout(self, conn):
-    """
-    Simulate an error 500
-    """
+    """Simulate an error 500."""
     global PROXY_TIMEOUT
     resp = FakeHTTPResponse()
     resp.status = 200
-    eventlet.sleep(PROXY_TIMEOUT+1)
+    eventlet.sleep(PROXY_TIMEOUT + 1)
     return resp
 
+
 class FakeConn:
-    """
-    fake response class for faking HTTP answers
-    """
+    """fake response class for faking HTTP answers."""
     def __init__(self):
         self.foo = 0
 
     def close(self):
-        """Close conn"""
+        """Close conn."""
         pass
+
 
 def _mock_do_connect(self, ipaddr, port, method, path, headers=None,
                      query_string=None, ssl=False):
     conn = FakeConn()
     return conn
 
+
 def debuglog(msg):
-    print msg
+    print(msg)
+
 
 class MockException(Exception):
-    """
-    """
     pass
 
+
 class TestSproxydDiskFile(unittest.TestCase):
-    """ Tests for swift_scality_backend.diskfile """
+    """Tests for swift_scality_backend.diskfile."""
 
     def setUp(self):
-        self._orig_tpool_exc = tpool.execute
-        tpool.execute = lambda f, *args, **kwargs: f(*args, **kwargs)
+        self._orig_tpool_exc = eventlet.tpool.execute
+        eventlet.tpool.execute = lambda f, *args, **kwargs: f(*args, **kwargs)
         self.fake_logger = logging.getLogger(__name__)
 
         global CONN_TIMEOUT, PROXY_TIMEOUT
         self.conf = dict(conn_timeout=CONN_TIMEOUT,
-                         proxy_timeout=PROXY_TIMEOUT, 
-                         ipaddr="42.42.42.42", 
+                         proxy_timeout=PROXY_TIMEOUT,
+                         ipaddr="42.42.42.42",
                          port=4242,
                          path="/proxy/foo")
-        self.filesystem = SproxydFileSystem(self.conf, self.fake_logger)
-        saved_do_connect = swift_scality_backend.diskfile.SproxydFileSystem.do_connect
+        self.filesystem = swift_scality_backend.diskfile.SproxydFileSystem(self.conf, self.fake_logger)
         swift_scality_backend.diskfile.SproxydFileSystem.do_connect = _mock_do_connect
 
     def tearDown(self):
-        tpool.execute = self._orig_tpool_exc
+        eventlet.tpool.execute = self._orig_tpool_exc
         self.fake_logger = None
 
     def _get_diskfile(self, a, c, o, **kwargs):
@@ -170,7 +146,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         saved_get_meta = swift_scality_backend.diskfile.SproxydFileSystem.get_meta
         swift_scality_backend.diskfile.SproxydFileSystem.get_meta = _mock_get_meta
         fake_put_meta("meta1", "value1")
-        metadata = gdf.read_metadata()
+        gdf.read_metadata()
         swift_scality_backend.diskfile.SproxydFileSystem.get_meta = saved_get_meta
 
     def test_read_metadata_404(self):
@@ -179,8 +155,8 @@ class TestSproxydDiskFile(unittest.TestCase):
         saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
         swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
         try:
-            metadata = gdf.read_metadata()
-        except DiskFileDeleted:
+            gdf.read_metadata()
+        except swift.common.exceptions.DiskFileDeleted:
             pass
         else:
             assert False
@@ -192,8 +168,8 @@ class TestSproxydDiskFile(unittest.TestCase):
         saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
         swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         try:
-            metadata = gdf.read_metadata()
-        except DiskFileError:
+            gdf.read_metadata()
+        except swift.common.exceptions.DiskFileError:
             pass
         else:
             assert False
@@ -205,8 +181,8 @@ class TestSproxydDiskFile(unittest.TestCase):
         saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
         swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
         try:
-            metadata = gdf.read_metadata()
-        except Timeout:
+            gdf.read_metadata()
+        except eventlet.Timeout:
             pass
         else:
             assert False
@@ -219,7 +195,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
         try:
             gdf.write_metadata(None)
-        except DiskFileError:
+        except swift.common.exceptions.DiskFileError:
             pass
         else:
             assert False
@@ -233,7 +209,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         metadata = {'foo': 'bar', 'qux': 'baz'}
         try:
             gdf.write_metadata(metadata)
-        except DiskFileError:
+        except swift.common.exceptions.DiskFileError:
             pass
         else:
             assert False
@@ -247,7 +223,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         metadata = {'foo': 'bar', 'qux': 'baz'}
         try:
             gdf.write_metadata(metadata)
-        except Timeout:
+        except eventlet.Timeout:
             pass
         else:
             assert False
@@ -261,7 +237,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
-        except:
+        except Exception:
             assert False
         else:
             pass
@@ -275,7 +251,7 @@ class TestSproxydDiskFile(unittest.TestCase):
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
-        except DiskFileError:
+        except swift.common.exceptions.DiskFileError:
             pass
         else:
             assert False
@@ -289,14 +265,13 @@ class TestSproxydDiskFile(unittest.TestCase):
         timestamp = 'foo'
         try:
             gdf.delete(timestamp)
-        except Timeout:
+        except eventlet.Timeout:
             pass
         else:
             assert False
         swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
 
-#test connection to sproxyd
-#test notfound exception
-#test bad usermd
-#
+# test connection to sproxyd
+# test notfound exception
+# test bad usermd

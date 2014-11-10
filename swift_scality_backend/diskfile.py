@@ -16,27 +16,23 @@
 
 """ Sproxyd Disk File Interface for Swift Object Server"""
 
-import hashlib
-import pickle
 import base64
-import urllib
+import contextlib
+import hashlib
 import itertools
-from contextlib import contextmanager
+import pickle
+import urllib
 
-from eventlet.timeout import Timeout
+import eventlet
 
-from swift.common.bufferedhttp import http_connect_raw
-from swift.common.exceptions import ConnectionTimeout, \
-    DiskFileQuarantined, DiskFileDeleted, DiskFileNotOpen, \
-    DiskFileError
-from swift.common.swob import multi_range_iterator
+import swift.common.bufferedhttp
+import swift.common.exceptions
+import swift.common.swob
 
 from swift_scality_backend import utils
 
-class SproxydException(DiskFileError):
-    """
-    Sproxyd Exception
-    """
+
+class SproxydException(swift.common.exceptions.DiskFileError):
     def __init__(self, msg, ipaddr='', port=0, path='',
                  http_status=0, http_reason=''):
         super(SproxydException, self).__init__(msg)
@@ -73,9 +69,7 @@ class SproxydException(DiskFileError):
 
 
 class SproxydFileSystem(object):
-    """
-    A sproxyd file system scheme.
-    """
+    """A sproxyd file system scheme."""
 
     def __init__(self, conf, logger):
         self.logger = logger
@@ -96,36 +90,30 @@ class SproxydFileSystem(object):
     @utils.trace
     def do_connect(self, ipaddr, port, method, path, headers=None,
                    query_string=None, ssl=False):
-        """
-        stubable function for connecting
-        """
+        """stubable function for connecting."""
         safe_path = self.base_path + urllib.quote(path)
-        conn = http_connect_raw(
+        conn = swift.common.bufferedhttp.http_connect_raw(
             ipaddr, port, method,
             safe_path, headers, query_string, ssl)
         return conn
 
     def conn_getresponse(self, conn):
-        """
-        stubable function for getting conn responses
-        """
+        """stubable function for getting conn responses."""
         return conn.getresponse()
 
     @utils.trace
     def get_meta(self, name):
-        """
-        Open a connection and get usermd"
-        """
+        """Open a connection and get usermd."""
         self.logger.debug("GET_meta " + self.base_path + name)
         headers = {}
         conn = None
         try:
-            with ConnectionTimeout(self.conn_timeout):
+            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'HEAD',
                     name, headers, None, False)
-            with Timeout(self.proxy_timeout):
+            with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200:
                     headers = dict(resp.getheaders())
@@ -140,8 +128,8 @@ class SproxydFileSystem(object):
                         ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
                         http_reason=resp.reason)
-        except (EOFError) as err:
-            print "EOFError"
+        except EOFError:
+            self.logger.debug("EOFError")
             return None
         finally:
             if conn:
@@ -151,9 +139,7 @@ class SproxydFileSystem(object):
 
     @utils.trace
     def put_meta(self, name, metadata):
-        """
-        Connect to sproxyd and put usermd
-        """
+        """Connect to sproxyd and put usermd."""
         self.logger.debug("PUT_meta " + self.base_path + name + " : " + str(metadata))
         if metadata is None:
             raise SproxydException("no usermd")
@@ -163,12 +149,12 @@ class SproxydFileSystem(object):
         headers["x-scal-usermd"] = base64.b64encode(usermd)
         conn = None
         try:
-            with ConnectionTimeout(self.conn_timeout):
+            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'PUT',
                     name, headers, None, False)
-            with Timeout(self.proxy_timeout):
+            with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200:
                     resp.read()
@@ -186,19 +172,17 @@ class SproxydFileSystem(object):
 
     @utils.trace
     def del_object(self, name):
-        """
-        Connect to sproxyd and delete object
-        """
+        """Connect to sproxyd and delete object."""
         self.logger.debug("del_object " + self.base_path + name)
         headers = {}
         conn = None
         try:
-            with ConnectionTimeout(self.conn_timeout):
+            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
                 conn = self.do_connect(
                     ipaddr, port, 'DELETE',
                     name, headers, None, False)
-            with Timeout(self.proxy_timeout):
+            with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200 or resp.status == 404:
                     resp.read()
@@ -214,16 +198,13 @@ class SproxydFileSystem(object):
 
     @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
-        """
-        Get a diskfile
-        """
+        """Get a diskfile."""
         self.logger.debug("get_diskfile")
         return DiskFile(self, account, container, obj)
 
 
 class DiskFileWriter(object):
-    """
-    A simple sproxyd pass-through
+    """A simple sproxyd pass-through
 
     Encapsulation of the write context for servicing PUT REST API
     requests. Serves as the context manager object for DiskFile's create()
@@ -239,7 +220,7 @@ class DiskFileWriter(object):
         headers = {}
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
-        with ConnectionTimeout(filesystem.conn_timeout):
+        with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT',
@@ -249,8 +230,7 @@ class DiskFileWriter(object):
     logger = property(lambda self: self._filesystem.logger)
 
     def write(self, chunk):
-        """
-        Write a chunk of data
+        """Write a chunk of data
 
         :param chunk: the chunk of data to write as a string object
         """
@@ -261,8 +241,7 @@ class DiskFileWriter(object):
 
     @utils.trace
     def put(self, metadata):
-        """
-        Make the final association
+        """Make the final association
 
         :param metadata: dictionary of metadata to be written
         :param extension: extension to be used when making the file
@@ -274,7 +253,7 @@ class DiskFileWriter(object):
             if resp.status != 200:
                 msg = resp.read()
                 raise SproxydException("putting: %s / %s" % (
-                        str(resp.status), str(msg)))
+                    str(resp.status), str(msg)))
         finally:
             self._conn.close()
         metadata['name'] = self._name
@@ -283,8 +262,7 @@ class DiskFileWriter(object):
 
 
 class DiskFileReader(object):
-    """
-    A simple sproxyd pass-through
+    """A simple sproxyd pass-through
 
     Encapsulation of the read context for servicing GET REST API
     requests. Serves as the context manager object for DiskFile's reader()
@@ -306,16 +284,14 @@ class DiskFileReader(object):
         self._suppress_file_closing = False
         #
         self._filesystem.logger.debug("GET stream " +
-                                    filesystem.base_path + name)
+                                      filesystem.base_path + name)
         self._conn = None
 
     logger = property(lambda self: self._filesystem.logger)
 
     @utils.trace
     def stream(self, resp):
-        """
-        stream input
-        """
+        """stream input."""
         try:
             self._bytes_read = 0
             while True:
@@ -337,7 +313,7 @@ class DiskFileReader(object):
         self._filesystem.logger.debug("__iter__ over " + self._filesystem.base_path + self._name)
         headers = {}
 
-        with ConnectionTimeout(self._filesystem.conn_timeout):
+        with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
@@ -350,14 +326,12 @@ class DiskFileReader(object):
 
     @utils.trace
     def app_iter_range(self, start, stop):
-        """
-        iterate over a range
-        """
+        """iterate over a range."""
         self._filesystem.logger.debug("app_iter_range")
         headers = {}
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
-        with ConnectionTimeout(self._filesystem.conn_timeout):
+        with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET',
@@ -370,16 +344,14 @@ class DiskFileReader(object):
 
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
-        """
-        iterate over multiple ranges
-        """
+        """iterate over multiple ranges."""
         self._filesystem.logger.debug("app_iter_ranges")
         if not ranges:
             yield ''
         else:
             try:
                 self._suppress_file_closing = True
-                for chunk in multi_range_iterator(
+                for chunk in swift.common.swob.multi_range_iterator(
                         ranges, content_type, boundary, size,
                         self.app_iter_range):
                     yield chunk
@@ -387,22 +359,23 @@ class DiskFileReader(object):
                 self._suppress_file_closing = False
                 try:
                     self.close()
-                except DiskFileQuarantined:
+                except swift.common.exceptions.DiskFileQuarantined:
                     pass
 
     @utils.trace
     def close(self):
-        """
-        Close the file. Will handle quarantining file if necessary.
+        """Close the file.
+
+        Will handle quarantining file if necessary.
         """
         self._filesystem.logger.debug("read closing for " + self._filesystem.base_path + self._name)
         if self._conn:
             self._conn.close()
             self._conn = None
 
+
 class DiskFile(object):
-    """
-    A simple sproxyd pass-through
+    """A simple sproxyd pass-through
 
     :param mgr: DiskFileManager
     :param device_path: path to the target device or drive
@@ -432,8 +405,7 @@ class DiskFile(object):
 
     @utils.trace
     def open(self):
-        """
-        Open the file and read the metadata.
+        """Open the file and read the metadata.
 
         This method must populate the _metadata attribute.
         :raises DiskFileCollision: on name mis-match with metadata
@@ -444,36 +416,33 @@ class DiskFile(object):
         """
         metadata = self._filesystem.get_meta(self._name)
         if metadata is None:
-            raise DiskFileDeleted()
+            raise swift.common.exceptions.DiskFileDeleted()
         self._metadata = metadata or {}
         return self
 
     @utils.trace
     def __enter__(self):
         if self._metadata is None:
-            raise DiskFileNotOpen()
+            raise swift.common.exceptions.DiskFileNotOpen()
         return self
 
     @utils.trace
     def __exit__(self, t, v, tb):
-        """
-        """
+        pass
 
     @utils.trace
     def get_metadata(self):
-        """
-        Provide the metadata for an object as a dictionary.
+        """Provide the metadata for an object as a dictionary.
 
         :returns: object's metadata dictionary
         """
         if self._metadata is None:
-            raise DiskFileNotOpen()
+            raise swift.common.exceptions.DiskFileNotOpen()
         return self._metadata
 
     @utils.trace
     def read_metadata(self):
-        """
-        Return the metadata for an object.
+        """Return the metadata for an object.
 
         :returns: metadata dictionary for an object
         """
@@ -482,9 +451,9 @@ class DiskFile(object):
 
     @utils.trace
     def reader(self, keep_cache=False):
-        """
-        Return a swift.common.swob.Response class compatible "app_iter"
-        object. The responsibility of closing the open file is passed to the
+        """Return a swift.common.swob.Response class compatible "app_iter" object.
+
+        The responsibility of closing the open file is passed to the
         DiskFileReader object.
 
         :param keep_cache:
@@ -497,11 +466,9 @@ class DiskFile(object):
         return dr
 
     @utils.trace
-    @contextmanager
+    @contextlib.contextmanager
     def create(self, size=None):
-        """
-        Context manager to create a file. We create a temporary file first, and
-        then return a DiskFileWriter object to encapsulate the state.
+        """Context manager to create a file.
 
         :param size: optional initial size of file to explicitly allocate on
                      disk
@@ -511,16 +478,13 @@ class DiskFile(object):
 
     @utils.trace
     def write_metadata(self, metadata):
-        """
-        Write a block of metadata to an object.
-        """
+        """Write a block of metadata to an object."""
         self._filesystem.put_meta(self._name, metadata)
 
     @utils.trace
     def delete(self, timestamp):
-        """
-        Perform a delete for the given object in the given container under the
-        given account.
+        """Perform a delete for the given object in the given container under
+        the given account.
 
         This creates a tombstone file with the given timestamp, and removes
         any older versions of the object file.  Any file that has an older
