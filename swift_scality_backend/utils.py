@@ -46,12 +46,23 @@ del monkey_patch_log_trace
 # End of monkey-patch
 
 def trace(f):
+    '''Trace calls to a decorated function
+
+    Using this decorator on a function will cause its execution to be logged at
+    `TRACE` level, including messages when the function is called (with a call
+    identifier and the arguments), as well as when the function returns (also
+    including the call identifier, and a representation of the return value or
+    exception if applicable).
+    '''
+
+    # 'State' hack
     tid = [0]
 
     name = f.func_name
 
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
+        # Get & bump call identifier, assume non-preemptive threading
         ctid, tid[0] = tid[0], tid[0] + 1
 
         maybe_self = None
@@ -60,6 +71,8 @@ def trace(f):
             maybe_self = args[0]
         else:
             maybe_self = kwargs.get('self', None)
+
+        assert maybe_self is not None
 
         logger = getattr(maybe_self, 'logger', DEFAULT_LOGGER)
 
