@@ -22,6 +22,7 @@ DEFAULT_LOGGER = logging.getLogger(__name__)
 # Monkey-patch Python logging to support `trace` logging
 TRACE_LEVEL = 5
 
+
 def monkey_patch_log_trace(level):
     '''Monkey-patch `trace` support onto `logging.Logger`'''
 
@@ -46,6 +47,7 @@ def monkey_patch_log_trace(level):
 monkey_patch_log_trace(TRACE_LEVEL)
 del monkey_patch_log_trace
 # End of monkey-patch
+
 
 def trace(f):
     '''Trace calls to a decorated function

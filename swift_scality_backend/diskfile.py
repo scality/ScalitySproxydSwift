@@ -401,7 +401,7 @@ class DiskFile(object):
     def __repr__(self):
         ret = 'DiskFile(filesystem=%r, account=%r, container=%r, obj=%r)'
         return ret % (self._filesystem, self._account, self._container,
-            self._obj)
+                      self._obj)
 
     @utils.trace
     def open(self):
