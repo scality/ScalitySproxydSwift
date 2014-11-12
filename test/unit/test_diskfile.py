@@ -19,6 +19,7 @@ import logging
 import unittest
 
 import eventlet
+import mock
 import swift.common.exceptions
 
 import swift_scality_backend.diskfile
@@ -30,13 +31,11 @@ PROXY_TIMEOUT = 1
 
 def _mock_get_meta(self, obj):
     """get the metadata from a fake dictionary."""
-    global _metadata
     return _metadata
 
 
 def fake_put_meta(name, metadata):
     """set the metadata to a fake dictionary."""
-    global _metadata
     _metadata[name] = metadata
 
 
@@ -76,17 +75,14 @@ def _mock_conn_getresponse_500(self, conn):
 
 def _mock_conn_getresponse_timeout(self, conn):
     """Simulate an error 500."""
-    global PROXY_TIMEOUT
     resp = FakeHTTPResponse()
     resp.status = 200
-    eventlet.sleep(PROXY_TIMEOUT + 1)
+    eventlet.sleep(PROXY_TIMEOUT + 0.1)
     return resp
 
 
 class FakeConn:
     """fake response class for faking HTTP answers."""
-    def __init__(self):
-        self.foo = 0
 
     def close(self):
         """Close conn."""
@@ -99,14 +95,6 @@ def _mock_do_connect(self, ipaddr, port, method, path, headers=None,
     return conn
 
 
-def debuglog(msg):
-    print(msg)
-
-
-class MockException(Exception):
-    pass
-
-
 class TestSproxydDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile."""
 
@@ -115,9 +103,8 @@ class TestSproxydDiskFile(unittest.TestCase):
         eventlet.tpool.execute = lambda f, *args, **kwargs: f(*args, **kwargs)
         self.fake_logger = logging.getLogger(__name__)
 
-        global CONN_TIMEOUT, PROXY_TIMEOUT
-        self.conf = dict(conn_timeout=CONN_TIMEOUT,
-                         proxy_timeout=PROXY_TIMEOUT,
+        self.conf = dict(sproxyd_conn_timeout=CONN_TIMEOUT,
+                         sproxyd_proxy_timeout=PROXY_TIMEOUT,
                          ipaddr="42.42.42.42",
                          port=4242,
                          path="/proxy/foo")
@@ -131,146 +118,76 @@ class TestSproxydDiskFile(unittest.TestCase):
     def _get_diskfile(self, a, c, o, **kwargs):
         return self.filesystem.get_diskfile(a, c, o, **kwargs)
 
-    def test_filesystem(self):
-        gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        assert gdf._filesystem is self.filesystem
-
     def test_get_diskfile(self):
-        debuglog("test_get_diskfile")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
         assert gdf._filesystem is self.filesystem
 
     def test_get_meta(self):
-        debuglog("test_get_meta")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_get_meta = swift_scality_backend.diskfile.SproxydFileSystem.get_meta
-        swift_scality_backend.diskfile.SproxydFileSystem.get_meta = _mock_get_meta
+
         fake_put_meta("meta1", "value1")
-        gdf.read_metadata()
-        swift_scality_backend.diskfile.SproxydFileSystem.get_meta = saved_get_meta
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.get_meta', _mock_get_meta):
+            meta = gdf.read_metadata()
+        self.assertIn("meta1", meta)
+        self.assertEqual(meta["meta1"], "value1")
 
     def test_read_metadata_404(self):
-        debuglog("test_read_metadata_404")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
-        try:
-            gdf.read_metadata()
-        except swift.common.exceptions.DiskFileDeleted:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_404):
+            self.assertRaises(swift.common.exceptions.DiskFileDeleted, gdf.read_metadata)
 
     def test_read_metadata_500(self):
-        debuglog("test_read_metadata_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
-        try:
-            gdf.read_metadata()
-        except swift.common.exceptions.DiskFileError:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_500):
+            self.assertRaises(swift.common.exceptions.DiskFileError, gdf.read_metadata)
 
     def test_read_metadata_timeout(self):
-        debuglog("test_read_metadata_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
-        try:
-            gdf.read_metadata()
-        except eventlet.Timeout:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_timeout):
+            self.assertRaises(eventlet.Timeout, gdf.read_metadata)
 
     def test_write_metadata_none(self):
-        debuglog("test_write_metadata_none")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
-        try:
-            gdf.write_metadata(None)
-        except swift.common.exceptions.DiskFileError:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+
+        self.assertRaises(swift.common.exceptions.DiskFileError, gdf.write_metadata, None)
 
     def test_write_metadata_500(self):
-        debuglog("test_write_metadata_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+
         metadata = {'foo': 'bar', 'qux': 'baz'}
-        try:
-            gdf.write_metadata(metadata)
-        except swift.common.exceptions.DiskFileError:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_500):
+            self.assertRaises(swift.common.exceptions.DiskFileError, gdf.write_metadata, metadata)
 
     def test_write_metadata_timeout(self):
-        debuglog("test_write_metadata_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
+
         metadata = {'foo': 'bar', 'qux': 'baz'}
-        try:
-            gdf.write_metadata(metadata)
-        except eventlet.Timeout:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_timeout):
+            self.assertRaises(eventlet.Timeout, gdf.write_metadata, metadata)
 
     def test_delete_404(self):
-        debuglog("test_delete_404")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_404
+
         timestamp = 'foo'
-        try:
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_404):
             gdf.delete(timestamp)
-        except Exception:
-            assert False
-        else:
-            pass
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
     def test_delete_500(self):
-        debuglog("test_delete_500")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_500
+
         timestamp = 'foo'
-        try:
-            gdf.delete(timestamp)
-        except swift.common.exceptions.DiskFileError:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_500):
+            self.assertRaises(swift.common.exceptions.DiskFileError, gdf.delete, timestamp)
 
     def test_delete_timeout(self):
-        debuglog("test_delete_timeout")
         gdf = self._get_diskfile("accountX", "containerY", "objZ")
-        saved_conn_getresponse = swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = _mock_conn_getresponse_timeout
-        timestamp = 'foo'
-        try:
-            gdf.delete(timestamp)
-        except eventlet.Timeout:
-            pass
-        else:
-            assert False
-        swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse = saved_conn_getresponse
 
+        timestamp = 'foo'
+        with mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.conn_getresponse', _mock_conn_getresponse_timeout):
+            self.assertRaises(eventlet.Timeout, gdf.delete, timestamp)
 
 # test connection to sproxyd
 # test notfound exception
