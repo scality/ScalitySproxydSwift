@@ -29,7 +29,7 @@ setuptools.setup(
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 2.7'],
-    install_requires=['swift>=2.0.0', 'eventlet>=0.9.15'],
+    install_requires=['swift>=1.13.1', 'eventlet>=0.9.15'],
     entry_points={
         'paste.app_factory': [
             'sproxyd_object=swift_scality_backend.server:app_factory'],

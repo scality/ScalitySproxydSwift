@@ -29,6 +29,9 @@ import swift.obj.server
 import swift_scality_backend.diskfile
 
 
+POLICY_IDX_STUB = object()
+
+
 class ObjectController(swift.obj.server.ObjectController):
     """Implements the WSGI application for the Scality Object Server."""
 
@@ -40,14 +43,15 @@ class ObjectController(swift.obj.server.ObjectController):
         self._filesystem = swift_scality_backend.diskfile.SproxydFileSystem(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
-                     policy_idx, **kwargs):
+                     policy_idx=POLICY_IDX_STUB, **kwargs):
         """Utility method for instantiating a DiskFile object supporting a
         given REST API.
         """
         return self._filesystem.get_diskfile(account, container, obj, **kwargs)
 
     def async_update(self, op, account, container, obj, host, partition,
-                     contdevice, headers_out, objdevice, policy_index):
+                     contdevice, headers_out, objdevice,
+                     policy_index=POLICY_IDX_STUB):
         """Sends or saves an async update.
 
         :param op: operation performed (ex: 'PUT', or 'DELETE')
@@ -89,7 +93,7 @@ class ObjectController(swift.obj.server.ObjectController):
                     {'ip': ip, 'port': port, 'dev': contdevice})
         # FIXME: For now don't handle async updates
 
-    def REPLICATE(self, request):
+    def REPLICATE(*_args, **_kwargs):
         """Handle REPLICATE requests for the Swift Object Server.
 
         This is used by the object replicator to get hashes for directories.
