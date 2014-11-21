@@ -293,7 +293,7 @@ class DiskFileReader(object):
         try:
             while True:
                 self._filesystem.logger.debug("reading " + self._filesystem.base_path + self._name)
-                chunk = resp.read(4096)
+                chunk = resp.read(65536)
                 if chunk:
                     if self._iter_etag:
                         self._iter_etag.update(chunk)
