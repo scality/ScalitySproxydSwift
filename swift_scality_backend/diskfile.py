@@ -276,9 +276,7 @@ class DiskFileReader(object):
     def __init__(self, filesystem, name, obj_size, etag):
         self._filesystem = filesystem
         self._name = name
-        self._etag = etag
         #
-        self._iter_etag = hashlib.md5()
         self._suppress_file_closing = False
         #
         self._filesystem.logger.debug("GET stream " +
@@ -295,8 +293,6 @@ class DiskFileReader(object):
                 self._filesystem.logger.debug("reading " + self._filesystem.base_path + self._name)
                 chunk = resp.read(65536)
                 if chunk:
-                    if self._iter_etag:
-                        self._iter_etag.update(chunk)
                     yield chunk
                 else:
                     self._filesystem.logger.debug("eof " + self._filesystem.base_path + self._name)
