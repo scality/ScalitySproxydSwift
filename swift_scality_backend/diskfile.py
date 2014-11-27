@@ -24,11 +24,15 @@ import pickle
 import urllib
 
 import eventlet
+import eventlet.green.os
 
 import swift.common.bufferedhttp
 import swift.common.exceptions
 import swift.common.swob
+import swift.common.utils
 
+import swift_scality_backend.http_utils
+import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
 
 
@@ -79,6 +83,19 @@ class SproxydFileSystem(object):
         hosts = [s.strip().split(':') for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
         self.hosts_list = hosts
         self.hosts = itertools.cycle(hosts)
+
+        self.use_splice = False
+
+        conf_wants_splice = swift.common.utils.config_true_value(
+            conf.get('splice', 'no'))
+        if conf_wants_splice and not swift.common.utils.system_has_splice():
+            self.logger.warn(
+                "Use of splice() requested (config says \"splice = %s\"), "
+                "but the system does not support it. "
+                "splice() will not be used." % conf.get('splice'))
+
+        if conf_wants_splice and swift.common.utils.system_has_splice():
+            self.use_splice = True
 
     def __repr__(self):
         ret = 'SproxydFileSystem(conn_timeout=%r, proxy_timeout=%r, ' + \
@@ -315,6 +332,45 @@ class DiskFileReader(object):
         resp = self._conn.getresponse()
         for chunk in self.stream(resp):
             yield chunk
+
+    @utils.trace
+    def can_zero_copy_send(self):
+        return self._filesystem.use_splice
+
+    @utils.trace
+    def zero_copy_send(self, wsockfd):
+        (ipaddr, port) = self._filesystem.hosts.next()
+
+        with swift.common.exceptions.ConnectionTimeout(
+                self._filesystem.conn_timeout):
+            safe_path = self._filesystem.base_path + urllib.quote(self._name)
+
+            conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
+                '%s:%s' % (ipaddr, port))
+            conn.putrequest('GET', safe_path, skip_host=False)
+            conn.endheaders()
+
+            self._conn = conn
+
+        resp = self._conn.getresponse()
+
+        if resp.status != httplib.OK:
+            raise Exception('Unexpected response code %s' % resp.status)
+
+        if resp.chunked:
+            raise Exception('Chunked responses not (yet) supported')
+
+        buff = resp.fp.get_buffered()
+        buff_len = len(buff)
+
+        while buff:
+            written = eventlet.green.os.write(wsockfd, buff)
+            buff = buff[written:]
+
+        to_splice = resp.length - buff_len if resp.length is not None else None
+
+        swift_scality_backend.splice_utils.splice_socket_to_socket(
+            resp.fileno(), wsockfd, length=to_splice)
 
     @utils.trace
     def app_iter_range(self, start, stop):
