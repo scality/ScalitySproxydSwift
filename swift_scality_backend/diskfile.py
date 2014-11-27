@@ -18,7 +18,7 @@
 
 import base64
 import contextlib
-import hashlib
+import httplib
 import itertools
 import pickle
 import urllib
