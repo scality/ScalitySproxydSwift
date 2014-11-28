@@ -18,12 +18,7 @@
 import httplib
 import socket
 
-
-class InvariantViolation(RuntimeError):
-    '''Exception raised when some invariant is violated
-
-    If this ever occurs at runtime, something is very wrong.
-    '''
+from swift_scality_backend.exceptions import InvariantViolation
 
 
 class SomewhatBufferedFileObject(socket._fileobject):

@@ -1,10 +1,23 @@
-from time import time
-from decimal import Decimal
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import time
+import decimal
 import math
 
+
 class AccrualFailureDetector(object):
-    """ Python implementation of 'The Phi Accrual Failure Detector'
-    by Hayashibara et al.
+    """ Python implementation of 'The Phi Accrual Failure Detector' by Hayashibara et al.
 
     (Original version by Brandon Williams (github.com/driftx), modified by Roger Schildmeijer (github.com/rchildmeijer))
 
@@ -15,58 +28,48 @@ class AccrualFailureDetector(object):
     Conversely, a high threshold generates fewer mistakes but needs more time to detect actual crashes"""
 
     max_sample_size = 1000
-    threshold = 7 # 1 = 10% error rate, 2 = 1%, 3 = 0.1%.., (eg threshold=3. no heartbeat for >6s => node marked as dead
+    threshold = 2  # 1 = 10% error rate, 2 = 1%, 3 = 0.1%.., (eg threshold=3. no heartbeat for >6s => node marked as dead)
 
     def __init__(self):
-        self._intervals = {}
-        self._hosts = {}
-        self._timestamps = {}
+        self._intervals = []
+        self._timestamp = None
+        self._mean = None
 
-    def heartbeat(self, host):
+    def heartbeat(self):
         """ Call when host has indicated being alive (aka heartbeat) """
-        if not self._timestamps.has_key(host):
-            self._timestamps[host] = time()
-            self._intervals[host] = []
-            self._hosts[host] = {}
+        if not self._timestamp:
+            self._timestamp = time.time()
         else:
-            now = time()
-            interval = now - self._timestamps[host]
-            self._timestamps[host] = now
-            self._intervals[host].append(interval)
-            if len(self._intervals[host]) > self.max_sample_size:
-                self._intervals[host].pop(0)
-            if len(self._intervals[host]) > 1:
-                self._hosts[host]['mean'] = sum(self._intervals[host]) / float(len(self._intervals[host]))
-                ### lines below commented because deviation and variance are currently unused
-                #deviationsum = 0
-                #for i in self._intervals[host]:
-                # deviationsum += (i - self._hosts[host]['mean']) ** 2
-                #variance = deviationsum / float(len(self._intervals[host]))
-                #deviation = math.sqrt(variance)
-                #self._hosts[host]['deviation'] = deviation
+            now = time.time()
+            interval = now - self._timestamp
+            self._timestamp = now
+            self._intervals.append(interval)
+            if len(self._intervals) > self.max_sample_size:
+                self._intervals.pop(0)
+            if len(self._intervals) > 1:
+                self._mean = sum(self._intervals) / float(len(self._intervals))
 
-    def _probability(self, host, timestamp):
+    def _probability(self, timestamp):
         # cassandra does this, citing: /* Exponential CDF = 1 -e^-lambda*x */
         # but the paper seems to call for a probability density function
         # which I can't figure out :/
-        exponent = -1.0 * timestamp / self._hosts[host]['mean']
-        return 1 - ( 1.0 - math.pow(math.e, exponent))
+        exponent = -1.0 * timestamp / self._mean
+        return 1 - (1.0 - math.pow(math.e, exponent))
 
-    def phi(self, host, timestamp=None):
-        if not self._hosts[host]:
-        #if not self._hosts.has_key(host):
-            return 0
-        ts = timestamp
-        if ts is None:
-            ts = time()
-        diff = ts - self._timestamps[host]
-        prob = self._probability(host, diff)
-        if (Decimal(str(prob)).is_zero()):
-            prob = 1E-128 # a very small number, avoiding ValueError: math domain error
+    def phi(self):
+        # if we don't have enough value to take a decision
+        # assume the node is dead
+        if self._mean is None:
+            return self.threshold + 1
+        ts = time.time()
+        diff = ts - self._timestamp
+        prob = self._probability(diff)
+        if (decimal.Decimal(str(prob)).is_zero()):
+            prob = 1E-128  # a very small number, avoiding ValueError: math domain error
         return -1 * math.log10(prob)
 
-    def isAlive(self, host):
-        return self.phi(host) < self.threshold
+    def isAlive(self):
+        return self.phi() < self.threshold
 
-    def isDead(self, host):
-        return not self.isAlive(host)
+    def isDead(self):
+        return not self.isAlive()
