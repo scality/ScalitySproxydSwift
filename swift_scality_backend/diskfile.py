@@ -341,10 +341,10 @@ class DiskFileReader(object):
     def zero_copy_send(self, wsockfd):
         (ipaddr, port) = self._filesystem.hosts.next()
 
+        safe_path = self._filesystem.base_path + urllib.quote(self._name)
+
         with swift.common.exceptions.ConnectionTimeout(
                 self._filesystem.conn_timeout):
-            safe_path = self._filesystem.base_path + urllib.quote(self._name)
-
             conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
                 '%s:%s' % (ipaddr, port))
             conn.putrequest('GET', safe_path, skip_host=False)
@@ -355,10 +355,16 @@ class DiskFileReader(object):
         resp = self._conn.getresponse()
 
         if resp.status != httplib.OK:
-            raise Exception('Unexpected response code %s' % resp.status)
+            raise SproxydException(
+                'Unexpected response code: %s' % resp.status,
+                ipaddr=ipaddr, port=port, path=safe_path,
+                http_status=resp.status, http_reason=resp.reason)
 
         if resp.chunked:
-            raise Exception('Chunked responses not (yet) supported')
+            raise SproxydException(
+                'Chunked response not supported',
+                ipaddr=ipaddr, port=port, path=safe_path,
+                http_status=resp.status, http_reason=resp.reason)
 
         buff = resp.fp.get_buffered()
         buff_len = len(buff)
