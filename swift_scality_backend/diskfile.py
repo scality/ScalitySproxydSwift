@@ -144,32 +144,29 @@ class SproxydFileSystem(object):
         """Open a connection and get usermd."""
         self.logger.debug("GET_meta " + self.base_path + name)
         headers = {}
+
+        (ipaddr, port) = self.sproxyd_hosts.next()
         conn = None
-        try:
-            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.sproxyd_hosts.next()
-                conn = self.do_connect(ipaddr, port, 'HEAD', name, headers)
-            with eventlet.Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
-                if resp.status == 200:
-                    headers = dict(resp.getheaders())
-                    usermd = base64.b64decode(headers["x-scal-usermd"])
-                    metadata = pickle.loads(usermd)
-                elif resp.status == 404:
-                    metadata = None
-                else:
-                    msg = resp.read()
-                    raise SproxydHTTPException(
-                        'get_meta: %s' % msg,
-                        ipaddr=ipaddr, port=port,
-                        path=self.base_path, http_status=resp.status,
-                        http_reason=resp.reason)
-        except EOFError:
-            self.logger.debug("EOFError")
-            return None
-        finally:
-            if conn:
-                conn.close()
+
+        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
+            conn = self.do_connect(ipaddr, port, 'HEAD', name, headers)
+
+        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
+            resp = self.conn_getresponse(conn)
+            if resp.status == 200:
+                header = resp.getheader('x-scal-usermd')
+                usermd = base64.b64decode(header)
+                metadata = pickle.loads(usermd)
+            elif resp.status == 404:
+                metadata = None
+            else:
+                msg = resp.read()
+                raise SproxydHTTPException(
+                    'get_meta: %s' % msg,
+                    ipaddr=ipaddr, port=port,
+                    path=self.base_path, http_status=resp.status,
+                    http_reason=resp.reason)
+
         self.logger.debug("Metadata retrieved for " + self.base_path + name + " : " + str(metadata))
         return metadata
 
@@ -183,25 +180,25 @@ class SproxydFileSystem(object):
         headers["x-scal-cmd"] = "update-usermd"
         usermd = pickle.dumps(metadata)
         headers["x-scal-usermd"] = base64.b64encode(usermd)
+
+        (ipaddr, port) = self.sproxyd_hosts.next()
         conn = None
-        try:
-            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.sproxyd_hosts.next()
-                conn = self.do_connect(ipaddr, port, 'PUT', name, headers)
-            with eventlet.Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
-                if resp.status == 200:
-                    resp.read()
-                else:
-                    msg = resp.read()
-                    raise SproxydHTTPException(
-                        'put_meta: %s' % msg,
-                        ipaddr=ipaddr, port=port,
-                        path=self.base_path, http_status=resp.status,
-                        http_reason=resp.reason)
-        finally:
-            if conn:
-                conn.close()
+
+        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
+            conn = self.do_connect(ipaddr, port, 'PUT', name, headers)
+
+        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
+            resp = self.conn_getresponse(conn)
+            if resp.status == 200:
+                resp.read()
+            else:
+                msg = resp.read()
+                raise SproxydHTTPException(
+                    'put_meta: %s' % msg,
+                    ipaddr=ipaddr, port=port,
+                    path=self.base_path, http_status=resp.status,
+                    http_reason=resp.reason)
+
         self.logger.debug("Metadata stored for " + self.base_path + name + " : " + str(metadata))
 
     @utils.trace
@@ -209,24 +206,23 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and delete object."""
         self.logger.debug("del_object " + self.base_path + name)
         headers = {}
+
+        (ipaddr, port) = self.sproxyd_hosts.next()
         conn = None
-        try:
-            with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.sproxyd_hosts.next()
-                conn = self.do_connect(ipaddr, port, 'DELETE', name, headers)
-            with eventlet.Timeout(self.proxy_timeout):
-                resp = self.conn_getresponse(conn)
-                if resp.status == 200 or resp.status == 404:
-                    resp.read()
-                else:
-                    msg = resp.read()
-                    raise SproxydHTTPException(
-                        'del_object: %s' % msg, ipaddr=ipaddr, port=port,
-                        path=self.base_path, http_status=resp.status,
-                        http_reason=resp.reason)
-        finally:
-            if conn:
-                conn.close()
+
+        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
+            conn = self.do_connect(ipaddr, port, 'DELETE', name, headers)
+
+        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
+            resp = self.conn_getresponse(conn)
+            if resp.status in [200, 404]:
+                resp.read()
+            else:
+                msg = resp.read()
+                raise SproxydHTTPException(
+                    'del_object: %s' % msg, ipaddr=ipaddr, port=port,
+                    path=self.base_path, http_status=resp.status,
+                    http_reason=resp.reason)
 
     @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
@@ -252,8 +248,9 @@ class DiskFileWriter(object):
         headers = {}
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
+
+        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT', name, headers)
 
@@ -278,14 +275,13 @@ class DiskFileWriter(object):
         """
         self._conn.send('0\r\n\r\n')
         self._filesystem.logger.debug("write closing for : " + self._filesystem.base_path + self._name)
-        try:
+        with contextlib.closing(self._conn):
             resp = self._conn.getresponse()
             if resp.status != 200:
                 msg = resp.read()
                 raise SproxydHTTPException("putting: %s / %s" % (
                     str(resp.status), str(msg)))
-        finally:
-            self._conn.close()
+
         metadata['name'] = self._name
         self._filesystem.logger.debug("data successfully written for object : " + self._filesystem.base_path + self._name)
         self._filesystem.put_meta(self._name, metadata)
@@ -307,38 +303,34 @@ class DiskFileReader(object):
         self._filesystem = filesystem
         self._name = name
         #
-        self._suppress_file_closing = False
-        #
         self._filesystem.logger.debug("GET stream " +
                                       filesystem.base_path + name)
-        self._conn = None
 
     logger = property(lambda self: self._filesystem.logger)
 
-    @utils.trace
-    def stream(self, resp):
-        """stream input."""
-        try:
-            self._filesystem.logger.debug("Starting to read %s%s", self._filesystem.base_path, self._name)
-            for chunk in iter(lambda: resp.read(65536), b''):
-                yield chunk
-            self._filesystem.logger.debug("EOF %s%s", self._filesystem.base_path, self._name)
-        finally:
-            if not self._suppress_file_closing:
-                self.close()
+    @property
+    def safe_path(self):
+        return self._filesystem.base_path + urllib.quote(self.name)
+
+    @property
+    def name(self):
+        return self._name
 
     def __iter__(self):
         self._filesystem.logger.debug("__iter__ over " + self._filesystem.base_path + self._name)
         headers = {}
 
+        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
+        conn = None
+
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
-            self._conn = self._filesystem.do_connect(
+            conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET', self._name, headers)
 
-        resp = self._conn.getresponse()
-        for chunk in self.stream(resp):
-            yield chunk
+        with contextlib.closing(conn):
+            resp = conn.getresponse()
+            for chunk in swift_scality_backend.http_utils.stream(resp):
+                yield chunk
 
     @utils.trace
     def can_zero_copy_send(self):
@@ -347,43 +339,46 @@ class DiskFileReader(object):
     @utils.trace
     def zero_copy_send(self, wsockfd):
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
-
-        safe_path = self._filesystem.base_path + urllib.quote(self._name)
+        conn = None
 
         with swift.common.exceptions.ConnectionTimeout(
                 self._filesystem.conn_timeout):
             conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
                 '%s:%s' % (ipaddr, port))
-            conn.putrequest('GET', safe_path, skip_host=False)
-            conn.endheaders()
 
-            self._conn = conn
+            try:
+                conn.putrequest('GET', self.safe_path, skip_host=False)
+                conn.endheaders()
+            except:
+                conn.close()
+                raise
 
-        resp = self._conn.getresponse()
+        with conn:
+            resp = conn.getresponse()
 
-        if resp.status != httplib.OK:
-            raise SproxydHTTPException(
-                'Unexpected response code: %s' % resp.status,
-                ipaddr=ipaddr, port=port, path=safe_path,
-                http_status=resp.status, http_reason=resp.reason)
+            if resp.status != httplib.OK:
+                raise SproxydHTTPException(
+                    'Unexpected response code: %s' % resp.status,
+                    ipaddr=ipaddr, port=port, path=self.safe_path,
+                    http_status=resp.status, http_reason=resp.reason)
 
-        if resp.chunked:
-            raise SproxydHTTPException(
-                'Chunked response not supported',
-                ipaddr=ipaddr, port=port, path=safe_path,
-                http_status=resp.status, http_reason=resp.reason)
+            if resp.chunked:
+                raise SproxydHTTPException(
+                    'Chunked response not supported',
+                    ipaddr=ipaddr, port=port, path=self.safe_path,
+                    http_status=resp.status, http_reason=resp.reason)
 
-        buff = resp.fp.get_buffered()
-        buff_len = len(buff)
+            buff = resp.fp.get_buffered()
+            buff_len = len(buff)
 
-        while buff:
-            written = eventlet.green.os.write(wsockfd, buff)
-            buff = buff[written:]
+            while buff:
+                written = eventlet.green.os.write(wsockfd, buff)
+                buff = buff[written:]
 
-        to_splice = resp.length - buff_len if resp.length is not None else None
+            to_splice = resp.length - buff_len if resp.length is not None else None
 
-        swift_scality_backend.splice_utils.splice_socket_to_socket(
-            resp.fileno(), wsockfd, length=to_splice)
+            swift_scality_backend.splice_utils.splice_socket_to_socket(
+                resp.fileno(), wsockfd, length=to_splice)
 
     @utils.trace
     def app_iter_range(self, start, stop):
@@ -392,14 +387,17 @@ class DiskFileReader(object):
         headers = {}
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
+        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
+        conn = None
+
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
-            self._conn = self._filesystem.do_connect(
+            conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET', self._name, headers)
 
-        resp = self._conn.getresponse()
-        for chunk in self.stream(resp):
-            yield chunk
+        with contextlib.closing(conn):
+            resp = conn.getresponse()
+            for chunk in swift_scality_backend.http_utils.stream(resp):
+                yield chunk
 
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
@@ -408,29 +406,9 @@ class DiskFileReader(object):
         if not ranges:
             yield ''
         else:
-            try:
-                self._suppress_file_closing = True
-                for chunk in swift.common.swob.multi_range_iterator(
-                        ranges, content_type, boundary, size,
-                        self.app_iter_range):
-                    yield chunk
-            finally:
-                self._suppress_file_closing = False
-                try:
-                    self.close()
-                except swift.common.exceptions.DiskFileQuarantined:
-                    pass
-
-    @utils.trace
-    def close(self):
-        """Close the file.
-
-        Will handle quarantining file if necessary.
-        """
-        self._filesystem.logger.debug("read closing for " + self._filesystem.base_path + self._name)
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+            for chunk in swift.common.swob.multi_range_iterator(
+                    ranges, content_type, boundary, size, self.app_iter_range):
+                yield chunk
 
 
 class DiskFile(object):

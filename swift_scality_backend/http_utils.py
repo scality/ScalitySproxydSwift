@@ -15,6 +15,7 @@
 
 '''HTTP client utilities'''
 
+import errno
 import httplib
 import socket
 
@@ -44,7 +45,9 @@ class SomewhatBufferedFileObject(socket._fileobject):
         return value
 
     def flush(self):
-        raise NotImplementedError
+        # We can't raise NotImplementedError here because when an HTTPResponse
+        # object is closed, flush() is called
+        pass
 
     def write(self, data):
         raise NotImplementedError
@@ -100,3 +103,34 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
             self.fp = SomewhatBufferedFileObject(sock, 'rb', 1024)
 
     response_class = HTTPResponse
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
+
+
+def stream(fp, chunksize=(1024 * 64)):
+    '''Yield blocks of data from a file-like object using a given chunk size
+
+    This generator yield blocks from the given file-like object `fp` by calling
+    its `read` method repeatedly, stopping the loop once a zero-length value is
+    returned.
+
+    Any `OSError` or `IOError` with `errno` equal to `errno.EINTR` will be
+    caught and the loop will continue to run.
+    '''
+    while True:
+        try:
+            chunk = fp.read(chunksize)
+        except (OSError, IOError) as exc:
+            if getattr(exc, 'errno', None) == errno.EINTR:
+                continue
+            else:
+                raise
+
+        if len(chunk) != 0:
+            yield chunk
+        else:
+            break
