@@ -88,13 +88,17 @@ class SproxydFileSystem(object):
 
         conf_wants_splice = swift.common.utils.config_true_value(
             conf.get('splice', 'no'))
-        if conf_wants_splice and not swift.common.utils.system_has_splice():
+        try:
+            system_has_splice = swift.common.utils.system_has_splice()
+        except AttributeError:  # Old Swift versions
+            system_has_splice = False
+        if conf_wants_splice and not system_has_splice:
             self.logger.warn(
                 "Use of splice() requested (config says \"splice = %s\"), "
                 "but the system does not support it. "
                 "splice() will not be used." % conf.get('splice'))
 
-        if conf_wants_splice and swift.common.utils.system_has_splice():
+        if conf_wants_splice and system_has_splice:
             self.use_splice = True
 
     def __repr__(self):
