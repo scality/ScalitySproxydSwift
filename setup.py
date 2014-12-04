@@ -18,7 +18,7 @@ import setuptools
 
 setuptools.setup(
     name='swift-scality-backend',
-    version='0.2.0',
+    version='0.2.1',
     description='Scality Ring backend for OpenStack Swift',
     url='http://www.scality.com/',
     author='Scality Openstack Engineering Team',
