@@ -310,14 +310,10 @@ class DiskFileReader(object):
     def stream(self, resp):
         """stream input."""
         try:
-            while True:
-                self._filesystem.logger.debug("reading " + self._filesystem.base_path + self._name)
-                chunk = resp.read(65536)
-                if chunk:
-                    yield chunk
-                else:
-                    self._filesystem.logger.debug("eof " + self._filesystem.base_path + self._name)
-                    break
+            self._filesystem.logger.debug("Starting to read %s%s", self._filesystem.base_path, self._name)
+            for chunk in iter(lambda: resp.read(65536), b''):
+                yield chunk
+            self._filesystem.logger.debug("EOF %s%s", self._filesystem.base_path, self._name)
         finally:
             if not self._suppress_file_closing:
                 self.close()
