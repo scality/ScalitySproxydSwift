@@ -109,13 +109,11 @@ class SproxydFileSystem(object):
             self.hosts_list)
 
     @utils.trace
-    def do_connect(self, ipaddr, port, method, path, headers=None,
-                   query_string=None, ssl=False):
+    def do_connect(self, ipaddr, port, method, path, headers=None):
         """stubable function for connecting."""
         safe_path = self.base_path + urllib.quote(path)
         conn = swift.common.bufferedhttp.http_connect_raw(
-            ipaddr, port, method,
-            safe_path, headers, query_string, ssl)
+            ipaddr, port, method, safe_path, headers)
         return conn
 
     def conn_getresponse(self, conn):
@@ -131,9 +129,7 @@ class SproxydFileSystem(object):
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
-                conn = self.do_connect(
-                    ipaddr, port, 'HEAD',
-                    name, headers, None, False)
+                conn = self.do_connect(ipaddr, port, 'HEAD', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200:
@@ -172,9 +168,7 @@ class SproxydFileSystem(object):
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
-                conn = self.do_connect(
-                    ipaddr, port, 'PUT',
-                    name, headers, None, False)
+                conn = self.do_connect(ipaddr, port, 'PUT', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200:
@@ -200,9 +194,7 @@ class SproxydFileSystem(object):
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
                 (ipaddr, port) = self.hosts.next()
-                conn = self.do_connect(
-                    ipaddr, port, 'DELETE',
-                    name, headers, None, False)
+                conn = self.do_connect(ipaddr, port, 'DELETE', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
                 if resp.status == 200 or resp.status == 404:
@@ -244,9 +236,7 @@ class DiskFileWriter(object):
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
-                ipaddr, port, 'PUT',
-                name,
-                headers, None, False)
+                ipaddr, port, 'PUT', name, headers)
 
     logger = property(lambda self: self._filesystem.logger)
 
@@ -329,9 +319,7 @@ class DiskFileReader(object):
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
-                ipaddr, port, 'GET',
-                self._name,
-                headers, None, False)
+                ipaddr, port, 'GET', self._name, headers)
 
         resp = self._conn.getresponse()
         for chunk in self.stream(resp):
@@ -392,9 +380,7 @@ class DiskFileReader(object):
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
             (ipaddr, port) = self._filesystem.hosts.next()
             self._conn = self._filesystem.do_connect(
-                ipaddr, port, 'GET',
-                self._name,
-                headers, None, False)
+                ipaddr, port, 'GET', self._name, headers)
 
         resp = self._conn.getresponse()
         for chunk in self.stream(resp):
