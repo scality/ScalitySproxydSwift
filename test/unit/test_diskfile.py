@@ -15,14 +15,18 @@
 
 """Tests for swift_scality_backend.diskfile"""
 
+import httplib
 import logging
 import unittest
+import urllib
 
 import eventlet
 import mock
 import swift.common.exceptions
 
 import swift_scality_backend.diskfile
+import swift_scality_backend.utils
+from swift_scality_backend.exceptions import SproxydConfException
 
 _metadata = {}
 CONN_TIMEOUT = 1
@@ -192,3 +196,53 @@ class TestSproxydDiskFile(unittest.TestCase):
 # test connection to sproxyd
 # test notfound exception
 # test bad usermd
+
+
+def test_ping_when_nw_exception_is_raised():
+
+        def assert_ping_failed(expected_exc):
+            logger = mock.Mock()
+            filesystem = swift_scality_backend.diskfile.SproxydFileSystem({}, logger)
+
+            with mock.patch.object(urllib, 'urlopen', side_effect=expected_exc):
+                ping_result = filesystem.ping('http://ignored/')
+
+                assert ping_result is False, ('Ping returned %r, '
+                                              'not False' % ping_result)
+                assert logger.info.called
+                (msg, url, exc), _ = logger.info.call_args
+                assert type(exc) is expected_exc
+                assert "network error" in msg
+
+        for exc in [eventlet.Timeout, httplib.HTTPException, IOError]:
+            yield assert_ping_failed, exc
+
+
+class TestSproxydDiskFile2(unittest.TestCase):
+    """Tests for swift_scality_backend.diskfile."""
+
+    def setUp(self):
+        conf = {}
+        self.logger = mock.Mock()
+        self.filesystem = swift_scality_backend.diskfile.SproxydFileSystem(conf, self.logger)
+
+    @mock.patch.object(urllib, 'urlopen')
+    @mock.patch('swift_scality_backend.utils.is_sproxyd_conf_valid',
+                side_effect=SproxydConfException(""))
+    def test_ping_with_bad_sproxyd_conf(self, conf_checker_mock, urlopen_mock):
+        ping_result = self.filesystem.ping('http://ignored')
+
+        self.assertFalse(ping_result)
+        self.assertTrue(self.logger.warning.called)
+        (msg, url, exc), _ = self.logger.warning.call_args
+        self.assertIs(type(exc), SproxydConfException)
+        self.assertIn("is invalid:", msg)
+
+    @mock.patch.object(urllib, 'urlopen', side_effect=Exception)
+    def test_ping_with_unexpected_exc(self, urlopen_mock):
+        ping_result = self.filesystem.ping('http://ignored')
+
+        self.assertFalse(ping_result)
+        self.assertTrue(self.logger.exception.called)
+        (msg, url), _ = self.logger.exception.call_args
+        self.assertIn("Unexpected", msg)

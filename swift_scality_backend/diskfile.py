@@ -18,6 +18,7 @@
 
 import base64
 import contextlib
+import functools
 import httplib
 import itertools
 import pickle
@@ -25,51 +26,16 @@ import urllib
 
 import eventlet
 import eventlet.green.os
-
 import swift.common.bufferedhttp
 import swift.common.exceptions
 import swift.common.swob
 import swift.common.utils
 
+from swift_scality_backend.exceptions import SproxydHTTPException, \
+    SproxydConfException
 import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
-
-
-class SproxydException(swift.common.exceptions.DiskFileError):
-    def __init__(self, msg, ipaddr='', port=0, path='',
-                 http_status=0, http_reason=''):
-        super(SproxydException, self).__init__(msg)
-        self.msg = msg
-        self.ipaddr = ipaddr
-        self.port = port
-        self.base_path = path
-        self.http_status = http_status
-        self.http_reason = http_reason
-
-    def __str__(self):
-        suffix = filter(bool, [
-            self.ipaddr if self.ipaddr else None,
-            ':%d' % int(self.port) if self.port else None,
-            self.base_path if self.base_path else None,
-            ' %d' % self.http_status if self.http_status else None,
-            ' %s' % self.http_reason if self.http_reason else None])
-
-        if not suffix:
-            return self.msg
-        else:
-            return '%s %s' % (self.msg, ''.join(suffix))
-
-    def __repr__(self):
-        args = ', '.join('%s=%r' % arg for arg in [
-            ('msg', self.msg),
-            ('ipaddr', self.ipaddr),
-            ('port', self.port),
-            ('path', self.base_path),
-            ('http_status', self.http_status),
-            ('http_reason', self.http_reason)])
-
-        return 'SproxydException(%s)' % args
 
 
 class SproxydFileSystem(object):
@@ -79,10 +45,25 @@ class SproxydFileSystem(object):
         self.logger = logger
         self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
         self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
-        self.base_path = conf.get('sproxyd_path', '/proxy/chord').rstrip('/') + '/'
-        hosts = [s.strip().split(':') for s in conf.get('sproxyd_host', 'localhost:81').split(",")]
-        self.hosts_list = hosts
-        self.hosts = itertools.cycle(hosts)
+
+        path = conf.get('sproxyd_path', '/proxy/chord')
+        self.base_path = '/%s/' % path.strip('/')
+
+        self.healthcheck_threads = []
+        self.sproxyd_hosts_set = set()
+        hosts = conf.get('sproxyd_host', 'localhost:81')
+        for host in hosts.strip(',').split(","):
+            ip_addr, port = host.strip().split(':')
+            self.sproxyd_hosts_set.add((ip_addr, int(port)))
+
+            url = 'http://%s:%d%s.conf' % (ip_addr, int(port), self.base_path)
+            ping_url = functools.partial(self.ping, url)
+            on_up = functools.partial(self.on_sproxyd_up, ip_addr, int(port))
+            on_down = functools.partial(self.on_sproxyd_down, ip_addr, int(port))
+            thread = eventlet.spawn(utils.monitoring_loop, ping_url, on_up, on_down)
+            self.healthcheck_threads.append(thread)
+
+        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
 
         self.use_splice = False
 
@@ -101,12 +82,50 @@ class SproxydFileSystem(object):
         if conf_wants_splice and system_has_splice:
             self.use_splice = True
 
+    def ping(self, url):
+        try:
+            with eventlet.Timeout(1):
+                conf = urllib.urlopen(url)
+                return utils.is_sproxyd_conf_valid(conf.fp)
+        except (IOError, httplib.HTTPException, eventlet.Timeout) as e:
+            self.logger.info("Could not read Sproxyd configuration at %s "
+                             "due to a network error: %r", url, e)
+        except SproxydConfException as e:
+            self.logger.warning("Sproxyd configuration at %s is invalid: "
+                                "%r", url, e)
+        except:
+            self.logger.exception("Unexpected exception during Sproxyd "
+                                  "health check of %s", url)
+
+        return False
+
+    def on_sproxyd_up(self, host, port):
+        self.logger.info("Sproxyd connector at %s:%d is up", host, port)
+        self.sproxyd_hosts_set.add((host, port))
+        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
+        self.logger.debug('sproxyd_hosts_set is now: %r', self.sproxyd_hosts_set)
+
+    def on_sproxyd_down(self, host, port):
+        self.logger.warning("Sproxyd connector at %s:%d is down " +
+                            "or misconfigured", host, port)
+        self.sproxyd_hosts_set.remove((host, port))
+        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
+        self.logger.debug('sproxyd_hosts_set is now: %r', self.sproxyd_hosts_set)
+
+    def __del__(self):
+        for thread in self.healthcheck_threads:
+            try:
+                thread.kill()
+            except:
+                msg = "Exception while killing healthcheck thread"
+                self.logger.exception(msg)
+
     def __repr__(self):
         ret = 'SproxydFileSystem(conn_timeout=%r, proxy_timeout=%r, ' + \
             'base_path=%r, hosts_list=%r)'
         return ret % (
             self.conn_timeout, self.proxy_timeout, self.base_path,
-            self.hosts_list)
+            self.sproxyd_hosts_set)
 
     @utils.trace
     def do_connect(self, ipaddr, port, method, path, headers=None):
@@ -128,7 +147,7 @@ class SproxydFileSystem(object):
         conn = None
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.hosts.next()
+                (ipaddr, port) = self.sproxyd_hosts.next()
                 conn = self.do_connect(ipaddr, port, 'HEAD', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
@@ -140,7 +159,7 @@ class SproxydFileSystem(object):
                     metadata = None
                 else:
                     msg = resp.read()
-                    raise SproxydException(
+                    raise SproxydHTTPException(
                         'get_meta: %s' % msg,
                         ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
@@ -159,7 +178,7 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and put usermd."""
         self.logger.debug("PUT_meta " + self.base_path + name + " : " + str(metadata))
         if metadata is None:
-            raise SproxydException("no usermd")
+            raise SproxydHTTPException("no usermd")
         headers = {}
         headers["x-scal-cmd"] = "update-usermd"
         usermd = pickle.dumps(metadata)
@@ -167,7 +186,7 @@ class SproxydFileSystem(object):
         conn = None
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.hosts.next()
+                (ipaddr, port) = self.sproxyd_hosts.next()
                 conn = self.do_connect(ipaddr, port, 'PUT', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
@@ -175,7 +194,7 @@ class SproxydFileSystem(object):
                     resp.read()
                 else:
                     msg = resp.read()
-                    raise SproxydException(
+                    raise SproxydHTTPException(
                         'put_meta: %s' % msg,
                         ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
@@ -193,7 +212,7 @@ class SproxydFileSystem(object):
         conn = None
         try:
             with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                (ipaddr, port) = self.hosts.next()
+                (ipaddr, port) = self.sproxyd_hosts.next()
                 conn = self.do_connect(ipaddr, port, 'DELETE', name, headers)
             with eventlet.Timeout(self.proxy_timeout):
                 resp = self.conn_getresponse(conn)
@@ -201,7 +220,7 @@ class SproxydFileSystem(object):
                     resp.read()
                 else:
                     msg = resp.read()
-                    raise SproxydException(
+                    raise SproxydHTTPException(
                         'del_object: %s' % msg, ipaddr=ipaddr, port=port,
                         path=self.base_path, http_status=resp.status,
                         http_reason=resp.reason)
@@ -234,7 +253,7 @@ class DiskFileWriter(object):
         headers['transfer-encoding'] = "chunked"
         self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.hosts.next()
+            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT', name, headers)
 
@@ -263,7 +282,7 @@ class DiskFileWriter(object):
             resp = self._conn.getresponse()
             if resp.status != 200:
                 msg = resp.read()
-                raise SproxydException("putting: %s / %s" % (
+                raise SproxydHTTPException("putting: %s / %s" % (
                     str(resp.status), str(msg)))
         finally:
             self._conn.close()
@@ -313,7 +332,7 @@ class DiskFileReader(object):
         headers = {}
 
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.hosts.next()
+            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET', self._name, headers)
 
@@ -327,7 +346,7 @@ class DiskFileReader(object):
 
     @utils.trace
     def zero_copy_send(self, wsockfd):
-        (ipaddr, port) = self._filesystem.hosts.next()
+        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
 
         safe_path = self._filesystem.base_path + urllib.quote(self._name)
 
@@ -343,13 +362,13 @@ class DiskFileReader(object):
         resp = self._conn.getresponse()
 
         if resp.status != httplib.OK:
-            raise SproxydException(
+            raise SproxydHTTPException(
                 'Unexpected response code: %s' % resp.status,
                 ipaddr=ipaddr, port=port, path=safe_path,
                 http_status=resp.status, http_reason=resp.reason)
 
         if resp.chunked:
-            raise SproxydException(
+            raise SproxydHTTPException(
                 'Chunked response not supported',
                 ipaddr=ipaddr, port=port, path=safe_path,
                 http_status=resp.status, http_reason=resp.reason)
@@ -374,7 +393,7 @@ class DiskFileReader(object):
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            (ipaddr, port) = self._filesystem.hosts.next()
+            (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'GET', self._name, headers)
 
