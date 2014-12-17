@@ -39,9 +39,13 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
         finally:
             sock.close()
 
-    def test_fail_flush(self):
+    def test_flush(self):
         with self._make_socket() as sock:
-            self.assertRaises(NotImplementedError, sock.flush)
+            try:
+                ret = sock.flush()
+            except NotImplementedError:
+                self.fail("Socket flush should not raised a NotImplementedError")
+            self.assertIsNone(ret)
 
     def test_fail_write(self):
         with self._make_socket() as sock:
