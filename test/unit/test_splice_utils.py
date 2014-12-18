@@ -85,15 +85,21 @@ def _test_splice_socket_to_socket(test_length):
     assert result.getvalue() == test_message
 
 
-@unittest.skipUnless(
-    getattr(swift.common.utils, 'system_has_splice', lambda: False)(),
-    'No `splice` support')
+try:
+    import swift.common.splice
+    HAS_SPLICE = swift.common.splice.splice.available
+except ImportError:
+    try:
+        HAS_SPLICE = swift.common.utils.system_has_splice
+    except AttributeError:
+        HAS_SPLICE = False
+
+
+@unittest.skipUnless(HAS_SPLICE, 'No `splice` support')
 def test_splice_socket_to_socket():
     return _test_splice_socket_to_socket(test_length=False)
 
 
-@unittest.skipUnless(
-    getattr(swift.common.utils, 'system_has_splice', lambda: False)(),
-    'No `splice` support')
+@unittest.skipUnless(HAS_SPLICE, 'No `splice` support')
 def test_splice_socket_to_socket_bounded():
     return _test_splice_socket_to_socket(test_length=True)

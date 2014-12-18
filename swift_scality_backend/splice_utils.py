@@ -15,13 +15,19 @@
 
 '''Utility functions to work with `splice`'''
 
+import errno
 import fcntl
 import logging
 import os
 
 import eventlet.hubs
 
-import swift.common.utils
+try:
+    import swift.common.splice
+    HAS_NEW_SPLICE = True
+except ImportError:
+    import swift.common.utils
+    HAS_NEW_SPLICE = False
 
 # From `bits/fcntl-linux.h`
 F_GETPIPE_SZ = 1032
@@ -41,9 +47,14 @@ def splice_socket_to_socket(fd_in, fd_out, length=None):
 
             MAX_PIPE_SIZE = 0
 
-    flags = swift.common.utils.SPLICE_F_MOVE | \
-        swift.common.utils.SPLICE_F_NONBLOCK | \
-        swift.common.utils.SPLICE_F_MORE
+    if HAS_NEW_SPLICE:
+        flags = swift.common.splice.splice.SPLICE_F_MOVE | \
+            swift.common.splice.splice.SPLICE_F_NONBLOCK | \
+            swift.common.splice.splice.SPLICE_F_MORE
+    else:
+        flags = swift.common.utils.SPLICE_F_MOVE | \
+            swift.common.utils.SPLICE_F_NONBLOCK | \
+            swift.common.utils.SPLICE_F_MORE
 
     rpipe, wpipe = os.pipe()
 
@@ -63,10 +74,20 @@ def splice_socket_to_socket(fd_in, fd_out, length=None):
             else:
                 max_read_size = min(max_size, length)
 
-            # TODO Change this once https://review.openstack.org/#/c/135319/
-            # lands (0/None, EAGAIN handling etc)!
-            read = swift.common.utils.splice(fd_in, 0, wpipe, 0, max_read_size,
-                                             flags)
+            if HAS_NEW_SPLICE:
+                try:
+                    (read, _, _) = swift.common.splice.splice(fd_in, None,
+                                                              wpipe, None,
+                                                              max_read_size,
+                                                              flags)
+                except (IOError, OSError) as exc:
+                    if exc.errno == errno.EWOULDBLOCK:
+                        read = None
+                    else:
+                        raise
+            else:
+                read = swift.common.utils.splice(fd_in, 0, wpipe, 0,
+                                                 max_read_size, flags)
 
             if read is None:
                 # EAGAIN
@@ -80,9 +101,22 @@ def splice_socket_to_socket(fd_in, fd_out, length=None):
             todo = read
 
             while todo > 0:
-                # TODO Same as above
-                written = swift.common.utils.splice(rpipe, 0, fd_out, 0, todo,
-                                                    flags)
+                if HAS_NEW_SPLICE:
+                    try:
+                        (written, _, _) = swift.common.splice.splice(rpipe,
+                                                                     None,
+                                                                     fd_out,
+                                                                     None,
+                                                                     todo,
+                                                                     flags)
+                    except (IOError, OSError) as exc:
+                        if exc.errno == errno.EWOULDBLOCK:
+                            written = None
+                        else:
+                            raise
+                else:
+                    written = swift.common.utils.splice(rpipe, 0, fd_out, 0,
+                                                        todo, flags)
 
                 if written is None:
                     # EAGAIN
