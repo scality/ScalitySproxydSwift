@@ -153,7 +153,6 @@ class SproxydFileSystem(object):
     @utils.trace
     def get_meta(self, name):
         """Open a connection and get usermd."""
-        self.logger.debug("GET_meta " + self.base_path + name)
         headers = {}
 
         (ipaddr, port) = self.sproxyd_hosts.next()
@@ -178,13 +177,11 @@ class SproxydFileSystem(object):
                     path=self.base_path, http_status=resp.status,
                     http_reason=resp.reason)
 
-        self.logger.debug("Metadata retrieved for " + self.base_path + name + " : " + str(metadata))
         return metadata
 
     @utils.trace
     def put_meta(self, name, metadata):
         """Connect to sproxyd and put usermd."""
-        self.logger.debug("PUT_meta " + self.base_path + name + " : " + str(metadata))
         if metadata is None:
             raise SproxydHTTPException("no usermd")
         headers = {}
@@ -210,12 +207,11 @@ class SproxydFileSystem(object):
                     path=self.base_path, http_status=resp.status,
                     http_reason=resp.reason)
 
-        self.logger.debug("Metadata stored for " + self.base_path + name + " : " + str(metadata))
+        self.logger.debug("Metadata stored for %s%s : %s", self.base_path, name, metadata)
 
     @utils.trace
     def del_object(self, name):
         """Connect to sproxyd and delete object."""
-        self.logger.debug("del_object " + self.base_path + name)
         headers = {}
 
         (ipaddr, port) = self.sproxyd_hosts.next()
@@ -238,7 +234,6 @@ class SproxydFileSystem(object):
     @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
         """Get a diskfile."""
-        self.logger.debug("get_diskfile")
         return DiskFile(self, account, container, obj)
 
 
@@ -258,21 +253,28 @@ class DiskFileWriter(object):
         self._upload_size = 0
         headers = {}
         headers['transfer-encoding'] = "chunked"
-        self._filesystem.logger.debug("PUT stream " + filesystem.base_path + name)
+        self.logger.debug("DiskFileWriter for %s initialized", self.safe_path)
 
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
             self._conn = self._filesystem.do_connect(
                 ipaddr, port, 'PUT', name, headers)
 
+    def __repr__(self):
+        ret = 'DiskFileWriter(filesystem=%r, object_name=%r)'
+        return ret % (self._filesystem, self._name)
+
     logger = property(lambda self: self._filesystem.logger)
+
+    @property
+    def safe_path(self):
+        return self._filesystem.base_path + urllib.quote(self._name)
 
     def write(self, chunk):
         """Write a chunk of data
 
         :param chunk: the chunk of data to write as a string object
         """
-        self._filesystem.logger.debug("writing " + self._filesystem.base_path + self._name)
         self._conn.send('%x\r\n%s\r\n' % (len(chunk), chunk))
         self._upload_size += len(chunk)
         return self._upload_size
@@ -285,7 +287,6 @@ class DiskFileWriter(object):
         :param extension: extension to be used when making the file
         """
         self._conn.send('0\r\n\r\n')
-        self._filesystem.logger.debug("write closing for : " + self._filesystem.base_path + self._name)
         with contextlib.closing(self._conn):
             resp = self._conn.getresponse()
             if resp.status != 200:
@@ -294,7 +295,7 @@ class DiskFileWriter(object):
                     str(resp.status), str(msg)))
 
         metadata['name'] = self._name
-        self._filesystem.logger.debug("data successfully written for object : " + self._filesystem.base_path + self._name)
+        self.logger.debug("Data successfully written for object : %s", self.safe_path)
         self._filesystem.put_meta(self._name, metadata)
 
 
@@ -313,9 +314,10 @@ class DiskFileReader(object):
     def __init__(self, filesystem, name, obj_size, etag):
         self._filesystem = filesystem
         self._name = name
-        #
-        self._filesystem.logger.debug("GET stream " +
-                                      filesystem.base_path + name)
+
+    def __repr__(self):
+        ret = 'DiskFileReader(filesystem=%r, object_name=%r)'
+        return ret % (self._filesystem, self._name)
 
     logger = property(lambda self: self._filesystem.logger)
 
@@ -327,8 +329,8 @@ class DiskFileReader(object):
     def name(self):
         return self._name
 
+    @utils.trace
     def __iter__(self):
-        self._filesystem.logger.debug("__iter__ over " + self._filesystem.base_path + self._name)
         headers = {}
 
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
@@ -394,7 +396,6 @@ class DiskFileReader(object):
     @utils.trace
     def app_iter_range(self, start, stop):
         """iterate over a range."""
-        self._filesystem.logger.debug("app_iter_range")
         headers = {}
         headers["range"] = "bytes=" + str(start) + "-" + str(stop)
 
@@ -413,7 +414,6 @@ class DiskFileReader(object):
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
         """iterate over multiple ranges."""
-        self._filesystem.logger.debug("app_iter_ranges")
         if not ranges:
             yield ''
         else:
