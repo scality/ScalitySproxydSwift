@@ -31,6 +31,12 @@ import swift.common.exceptions
 import swift.common.swob
 import swift.common.utils
 
+try:
+    import swift.common.splice
+    HAS_NEW_SPLICE = True
+except ImportError:
+    HAS_NEW_SPLICE = False
+
 from swift_scality_backend.exceptions import SproxydHTTPException, \
     SproxydConfException
 import swift_scality_backend.http_utils
@@ -69,10 +75,15 @@ class SproxydFileSystem(object):
 
         conf_wants_splice = swift.common.utils.config_true_value(
             conf.get('splice', 'no'))
-        try:
-            system_has_splice = swift.common.utils.system_has_splice()
-        except AttributeError:  # Old Swift versions
-            system_has_splice = False
+
+        if HAS_NEW_SPLICE:
+            system_has_splice = swift.common.splice.splice.available
+        else:
+            try:
+                system_has_splice = swift.common.utils.system_has_splice()
+            except AttributeError:  # Old Swift versions
+                system_has_splice = False
+
         if conf_wants_splice and not system_has_splice:
             self.logger.warn(
                 "Use of splice() requested (config says \"splice = %s\"), "
