@@ -32,9 +32,14 @@ def _test_splice_socket_to_socket(test_length):
     with open('/proc/sys/fs/pipe-max-size', 'r') as fd:
         max_size = int(fd.read().strip())
 
-    message = 'Hello, world!' * max_size
-    test_message = message[:-2]
-    test_length = len(test_message)
+    orig_message = 'Hello, world!' * max_size
+
+    if test_length:
+        test_message = orig_message[:-2]
+    else:
+        test_message = orig_message
+
+    test_message_length = len(test_message)
 
     server1 = eventlet.listen(('127.0.0.1', 0))
     addr1 = server1.getsockname()
@@ -51,7 +56,7 @@ def _test_splice_socket_to_socket(test_length):
 
         if test_length:
             swift_scality_backend.splice_utils.splice_socket_to_socket(
-                client.fileno(), remote.fileno(), length=test_length)
+                client.fileno(), remote.fileno(), length=test_message_length)
         else:
             swift_scality_backend.splice_utils.splice_socket_to_socket(
                 client.fileno(), remote.fileno())
@@ -71,16 +76,13 @@ def _test_splice_socket_to_socket(test_length):
     thread2 = eventlet.spawn(run_server2, server2)
 
     client = eventlet.connect(addr1)
-    client.sendall(message)
+    client.sendall(orig_message)
     client.close()
 
     thread1.wait()
     thread2.wait()
 
-    if test_length:
-        assert result.getvalue() == test_message
-    else:
-        assert result.getvalue() == message
+    assert result.getvalue() == test_message
 
 
 @unittest.skipUnless(
