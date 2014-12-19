@@ -18,31 +18,42 @@
 import time
 import unittest
 
-import swift_scality_backend.afd
+from swift_scality_backend.afd import AccrualFailureDetector
 
 
 class TestAFDBehaviorOnInit(unittest.TestCase):
 
-    def setUp(self):
-        self.afd = swift_scality_backend.afd.AccrualFailureDetector()
-
     def test_afd_with_no_heartbeat(self):
-        self.assertTrue(self.afd.isDead())
+        afd = AccrualFailureDetector()
+        self.assertTrue(afd.isDead())
 
     def test_afd_with_one_heartbeat(self):
-        self.afd.heartbeat()
-        self.assertTrue(self.afd.isDead())
+        afd = AccrualFailureDetector()
+        afd.heartbeat()
+        self.assertTrue(afd.isDead())
 
     def test_afd_with_two_heartbeats(self):
-        self.afd.heartbeat()
+        afd = AccrualFailureDetector()
+        afd.heartbeat()
         time.sleep(0.01)
-        self.afd.heartbeat()
-        self.assertTrue(self.afd.isDead())
+        afd.heartbeat()
+        self.assertTrue(afd.isDead())
 
     def test_afd_with_three_heartbeats(self):
-        self.afd.heartbeat()
+        afd = AccrualFailureDetector()
+        afd.heartbeat()
         time.sleep(0.01)
-        self.afd.heartbeat()
+        afd.heartbeat()
         time.sleep(0.01)
-        self.afd.heartbeat()
-        self.assertTrue(self.afd.isAlive())
+        afd.heartbeat()
+        self.assertTrue(afd.isAlive())
+
+    def test_max_sample_size(self):
+        afd = AccrualFailureDetector()
+        afd.max_sample_size = 3
+
+        for i in range(5):
+            afd.heartbeat()
+            time.sleep(0.01)
+
+        self.assertEqual(3, len(afd._intervals))
