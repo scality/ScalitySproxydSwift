@@ -153,13 +153,11 @@ class SproxydFileSystem(object):
     @utils.trace
     def get_meta(self, name):
         """Open a connection and get usermd."""
-        headers = {}
-
         (ipaddr, port) = self.sproxyd_hosts.next()
         conn = None
 
         with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(ipaddr, port, 'HEAD', name, headers)
+            conn = self.do_connect(ipaddr, port, 'HEAD', name)
 
         with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
             resp = self.conn_getresponse(conn)
@@ -212,13 +210,11 @@ class SproxydFileSystem(object):
     @utils.trace
     def del_object(self, name):
         """Connect to sproxyd and delete object."""
-        headers = {}
-
         (ipaddr, port) = self.sproxyd_hosts.next()
         conn = None
 
         with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(ipaddr, port, 'DELETE', name, headers)
+            conn = self.do_connect(ipaddr, port, 'DELETE', name)
 
         with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
             resp = self.conn_getresponse(conn)
@@ -331,14 +327,12 @@ class DiskFileReader(object):
 
     @utils.trace
     def __iter__(self):
-        headers = {}
-
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
         conn = None
 
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
             conn = self._filesystem.do_connect(
-                ipaddr, port, 'GET', self._name, headers)
+                ipaddr, port, 'GET', self._name)
 
         with contextlib.closing(conn):
             resp = conn.getresponse()
