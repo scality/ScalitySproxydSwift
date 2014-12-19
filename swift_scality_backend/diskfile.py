@@ -151,81 +151,107 @@ class SproxydFileSystem(object):
         return conn.getresponse()
 
     @utils.trace
-    def get_meta(self, name):
-        """Open a connection and get usermd."""
-        (ipaddr, port) = self.sproxyd_hosts.next()
+    def _do_http(self, caller_name, handlers, method, path, headers=None):
+        '''Common code for handling a single HTTP request
+
+        Handler functions passed through `handlers` will be called with the HTTP
+        response object.
+
+        :param caller_name: Name of the caller function, used in exceptions
+        :type caller_name: `str`
+        :param handlers: Dictionary mapping HTTP response codes to handlers
+        :type handlers: `dict` of `int` to `callable`
+        :param method: HTTP request method
+        :type method: `str`
+        :param path: HTTP request path
+        :type path: `str`
+        :param headers: HTTP request headers
+        :type headers: `dict` of `str` to `str`
+
+        :raises SproxydHTTPException: Received an unhandled HTTP response
+        '''
+
+        address, port = self.sproxyd_hosts.next()
+
         conn = None
 
+        def unexpected_http_status(response):
+            message = response.read()
+
+            raise SproxydHTTPException(
+                '%s: %s' % (caller_name, message),
+                ipaddr=address, port=port,
+                path=self.base_path,
+                http_status=response.status,
+                http_reason=response.reason)
+
         with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(ipaddr, port, 'HEAD', name)
+            conn = self.do_connect(address, port, method, path, headers)
 
         with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
             resp = self.conn_getresponse(conn)
-            if resp.status == 200:
-                header = resp.getheader('x-scal-usermd')
-                usermd = base64.b64decode(header)
-                metadata = pickle.loads(usermd)
-            elif resp.status == 404:
-                metadata = None
-            else:
-                msg = resp.read()
-                raise SproxydHTTPException(
-                    'get_meta: %s' % msg,
-                    ipaddr=ipaddr, port=port,
-                    path=self.base_path, http_status=resp.status,
-                    http_reason=resp.reason)
+            status = resp.status
 
-        return metadata
+            handler = handlers.get(status, unexpected_http_status)
+            return handler(resp)
+
+    @utils.trace
+    def get_meta(self, name):
+        """Open a connection and get usermd."""
+
+        def handle_200(response):
+            header = response.getheader('x-scal-usermd')
+            pickled = base64.b64decode(header)
+            return pickle.loads(pickled)
+
+        def handle_404(response):
+            return None
+
+        handlers = {
+            200: handle_200,
+            404: handle_404,
+        }
+
+        return self._do_http('get_meta', handlers, 'HEAD', name)
 
     @utils.trace
     def put_meta(self, name, metadata):
         """Connect to sproxyd and put usermd."""
         if metadata is None:
             raise SproxydHTTPException("no usermd")
-        headers = {}
-        headers["x-scal-cmd"] = "update-usermd"
-        usermd = pickle.dumps(metadata)
-        headers["x-scal-usermd"] = base64.b64encode(usermd)
 
-        (ipaddr, port) = self.sproxyd_hosts.next()
-        conn = None
+        headers = {
+            'x-scal-cmd': 'update-usermd',
+            'x-scal-usermd': base64.b64encode(pickle.dumps(metadata)),
+        }
 
-        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(ipaddr, port, 'PUT', name, headers)
+        def handle_200(response):
+            response.read()
 
-        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
-            resp = self.conn_getresponse(conn)
-            if resp.status == 200:
-                resp.read()
-            else:
-                msg = resp.read()
-                raise SproxydHTTPException(
-                    'put_meta: %s' % msg,
-                    ipaddr=ipaddr, port=port,
-                    path=self.base_path, http_status=resp.status,
-                    http_reason=resp.reason)
+        handlers = {
+            200: handle_200,
+        }
 
-        self.logger.debug("Metadata stored for %s%s : %s", self.base_path, name, metadata)
+        result = self._do_http('put_meta', handlers, 'PUT', name, headers)
+
+        self.logger.debug(
+            "Metadata stored for %s%s : %s", self.base_path, name, metadata)
+
+        return result
 
     @utils.trace
     def del_object(self, name):
         """Connect to sproxyd and delete object."""
-        (ipaddr, port) = self.sproxyd_hosts.next()
-        conn = None
 
-        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(ipaddr, port, 'DELETE', name)
+        def handle_200_or_404(response):
+            response.read()
 
-        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
-            resp = self.conn_getresponse(conn)
-            if resp.status in [200, 404]:
-                resp.read()
-            else:
-                msg = resp.read()
-                raise SproxydHTTPException(
-                    'del_object: %s' % msg, ipaddr=ipaddr, port=port,
-                    path=self.base_path, http_status=resp.status,
-                    http_reason=resp.reason)
+        handlers = {
+            200: handle_200_or_404,
+            404: handle_200_or_404,
+        }
+
+        return self._do_http('del_object', handlers, 'DELETE', name)
 
     @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
