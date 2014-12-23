@@ -273,8 +273,9 @@ class DiskFileWriter(object):
         self._filesystem = filesystem
         self._name = name
         self._upload_size = 0
-        headers = {}
-        headers['transfer-encoding'] = "chunked"
+        headers = {
+            'transfer-encoding': 'chunked'
+        }
         self.logger.debug("DiskFileWriter for %s initialized", self.safe_path)
 
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
@@ -416,8 +417,9 @@ class DiskFileReader(object):
     @utils.trace
     def app_iter_range(self, start, stop):
         """iterate over a range."""
-        headers = {}
-        headers["range"] = "bytes=" + str(start) + "-" + str(stop)
+        headers = {
+            'range': 'bytes=' + str(start) + '-' + str(stop)
+        }
 
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
         conn = None
