@@ -331,10 +331,8 @@ class DiskFileReader(object):
 
     :param filesystem: internal file system object to use
     :param name: object name
-    :param obj_size: on-disk size of object in bytes
-    :param etag: MD5 hash of object from metadata
     """
-    def __init__(self, filesystem, name, obj_size, etag):
+    def __init__(self, filesystem, name):
         self._filesystem = filesystem
         self._name = name
 
@@ -528,9 +526,7 @@ class DiskFile(object):
 
         :param keep_cache:
         """
-        dr = DiskFileReader(self._filesystem, self._name,
-                            int(self._metadata['Content-Length']),
-                            self._metadata['ETag'])
+        dr = DiskFileReader(self._filesystem, self._name)
         # At this point the reader object is now responsible for
         # the file pointer.
         return dr
