@@ -97,13 +97,13 @@ class SproxydFileSystem(object):
         try:
             with eventlet.Timeout(1):
                 conf = urllib.urlopen(url)
-                return utils.is_sproxyd_conf_valid(conf.fp)
+                return utils.is_sproxyd_conf_valid(conf.read())
         except (IOError, httplib.HTTPException, eventlet.Timeout) as e:
             self.logger.info("Could not read Sproxyd configuration at %s "
                              "due to a network error: %r", url, e)
         except SproxydConfException as e:
             self.logger.warning("Sproxyd configuration at %s is invalid: "
-                                "%r", url, e)
+                                "%s", url, e)
         except:
             self.logger.exception("Unexpected exception during Sproxyd "
                                   "health check of %s", url)
