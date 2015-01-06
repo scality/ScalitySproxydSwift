@@ -445,14 +445,10 @@ class DiskFileReader(object):
 class DiskFile(object):
     """A simple sproxyd pass-through
 
-    :param mgr: DiskFileManager
-    :param device_path: path to the target device or drive
-    :param threadpool: thread pool to use for blocking operations
-    :param partition: partition on the device in which the object lives
+    :param filesystem: internal file system object to use
     :param account: account name for the object
     :param container: container name for the object
     :param obj: object name for the object
-    :param keep_cache: caller's preference for keeping data read in the cache
     """
 
     def __init__(self, filesystem, account, container, obj):
@@ -476,11 +472,7 @@ class DiskFile(object):
         """Open the file and read the metadata.
 
         This method must populate the _metadata attribute.
-        :raises DiskFileCollision: on name mis-match with metadata
-        :raises DiskFileDeleted: if it does not exist, or a tombstone is
-                                 present
-        :raises DiskFileQuarantined: if while reading metadata of the file
-                                     some data did pass cross checks
+        :raises DiskFileDeleted: if it does not exist
         """
         metadata = self._filesystem.get_meta(self._name)
         if metadata is None:
@@ -521,14 +513,10 @@ class DiskFile(object):
     def reader(self, keep_cache=False):
         """Return a swift.common.swob.Response class compatible "app_iter" object.
 
-        The responsibility of closing the open file is passed to the
-        DiskFileReader object.
-
-        :param keep_cache:
+        :param keep_cache: ignored. Kept for compatibility with the native
+                          `DiskFile` class in Swift
         """
         dr = DiskFileReader(self._filesystem, self._name)
-        # At this point the reader object is now responsible for
-        # the file pointer.
         return dr
 
     @utils.trace
@@ -536,9 +524,9 @@ class DiskFile(object):
     def create(self, size=None):
         """Context manager to create a file.
 
-        :param size: optional initial size of file to explicitly allocate on
-                     disk
-        :raises DiskFileNoSpace: if a size is specified and allocation fails
+        :param size: ignored. Kept for compatibility with the native
+                     `DiskFile` class in Swift. This `create` method is
+                     called externally only by the `ObjectController`
         """
         yield DiskFileWriter(self._filesystem, self._name)
 
@@ -552,10 +540,8 @@ class DiskFile(object):
         """Perform a delete for the given object in the given container under
         the given account.
 
-        This creates a tombstone file with the given timestamp, and removes
-        any older versions of the object file.  Any file that has an older
-        timestamp than timestamp will be deleted.
-
-        :param timestamp: timestamp to compare with each file
+        :param timestamp: ignored. Kept for compatibility with the native
+                          `DiskFile` class in Swift. This `delete` method is
+                          called externally only by the `ObjectController`
         """
         self._filesystem.del_object(self._name)
