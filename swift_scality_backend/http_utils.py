@@ -52,7 +52,7 @@ class SomewhatBufferedFileObject(socket._fileobject):
     def write(self, data):
         raise NotImplementedError
 
-    def writelines(self, list):
+    def writelines(self, lines):
         raise NotImplementedError
 
     def read(self, size=-1):
