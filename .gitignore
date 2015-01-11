@@ -14,3 +14,7 @@ ChangeLog
 pycscope.*
 .idea
 MANIFEST
+
+coverage.xml
+htmlcov/
+nosetests.xml
