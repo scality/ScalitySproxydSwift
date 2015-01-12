@@ -15,9 +15,7 @@
 
 '''Tests for `swift_scality_backend.utils`'''
 
-import ConfigParser
 import functools
-import io
 import itertools
 import unittest
 
@@ -30,97 +28,55 @@ from swift_scality_backend import utils
 
 class TestIsSproxydConfValid(unittest.TestCase):
 
-    def setUp(self):
-        self.config_obj = ConfigParser.RawConfigParser()
-        self.config_obj.add_section('Section1')
-        self.config_obj.set('Section1', 'by_path_enabled', '1')
-        self.config_obj.set('Section1', 'by_path_service_id', '0xC0')
-        self.config_obj.set('Section1', 'by_path_cos', '2')
+    def test_ini_conf_with_no_by_path_flag(self):
+        conf = '''
+               [chord_path]
+               ring_driver="chord"
+               '''
+        self.assertRaises(exceptions.SproxydConfException,
+                          utils.is_sproxyd_conf_valid, conf)
 
-        self.config = io.BytesIO()
+    def test_json_conf_with_no_by_path_flag(self):
+        conf = '''
+               {
+               "type": "chord",
+               }
+               '''
+        self.assertRaises(exceptions.SproxydConfException,
+                          utils.is_sproxyd_conf_valid, conf)
 
-    def test_valid_config(self):
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        is_valid_conf = utils.is_sproxyd_conf_valid(self.config)
-        self.assertTrue(is_valid_conf)
+    def test_ini_conf_with_by_path_disabled(self):
+        conf = '''
+               [chord_path]
+               by_path_enabled="0"
+               '''
+        self.assertRaises(exceptions.SproxydConfException,
+                          utils.is_sproxyd_conf_valid, conf)
 
-    def test_empty_conf(self):
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "Unable to find an INI section",
-                                utils.is_sproxyd_conf_valid,
-                                io.BytesIO(""))
+    def test_json_conf_with_by_path_disabled(self):
+        conf = '''
+               {
+               "by_path_enabled": false,
+               }
+               '''
+        self.assertRaises(exceptions.SproxydConfException,
+                          utils.is_sproxyd_conf_valid, conf)
 
-    def test_non_ini_conf(self):
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "parse configuration",
-                                utils.is_sproxyd_conf_valid,
-                                io.BytesIO("Blah"))
+    def test_ini_conf_with_by_path_enabled(self):
+        conf = '''
+               [chord_path]
+               by_path_enabled="1",
+               '''
+        self.assertTrue(utils.is_sproxyd_conf_valid(conf))
 
-    def test_no_by_path_enabled_flag(self):
-        self.config_obj.remove_option('Section1', 'by_path_enabled')
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "by_path_enabled flag",
-                                utils.is_sproxyd_conf_valid,
-                                self.config)
-
-    def test_by_path_enabled(self):
-        for value in ['True', 'true', '1', 'TRUE']:
-            self.config = io.BytesIO()
-            self.config_obj.set('Section1', 'by_path_enabled', value)
-            self.config_obj.write(self.config)
-            self.config.seek(0)
-            is_valid_conf = utils.is_sproxyd_conf_valid(self.config)
-            self.assertTrue(is_valid_conf)
-
-    def test_by_path_not_enabled(self):
-        for value in ('False', '0', 'false', '', 'blah'):
-            self.config = io.BytesIO()
-            self.config_obj.set('Section1', 'by_path_enabled', value)
-            self.config_obj.write(self.config)
-            self.config.seek(0)
-            self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                    "query by path must be enabled",
-                                    utils.is_sproxyd_conf_valid,
-                                    self.config)
-
-    def test_no_by_path_service_id(self):
-        self.config_obj.remove_option('Section1', 'by_path_service_id')
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "by_path_service_id",
-                                utils.is_sproxyd_conf_valid,
-                                self.config)
-
-    def test_non_integer_by_path_service_id(self):
-        self.config_obj.set('Section1', 'by_path_service_id', 'blah')
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "by_path_service_id",
-                                utils.is_sproxyd_conf_valid,
-                                self.config)
-
-    def test_no_by_path_cos(self):
-        self.config_obj.remove_option('Section1', 'by_path_cos')
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "by_path_cos",
-                                utils.is_sproxyd_conf_valid,
-                                self.config)
-
-    def test_non_integer_by_path_cos(self):
-        self.config_obj.set('Section1', 'by_path_cos', 'blah')
-        self.config_obj.write(self.config)
-        self.config.seek(0)
-        self.assertRaisesRegexp(exceptions.SproxydConfException,
-                                "by_path_cos",
-                                utils.is_sproxyd_conf_valid,
-                                self.config)
+    def test_json_conf_with_by_path_enabled(self):
+        # is_sproxyd_conf_valid should be case-insensitive
+        conf = '''
+               {
+               "by_path_enabled": TrUe
+               }
+               '''
+        self.assertTrue(utils.is_sproxyd_conf_valid(conf))
 
 
 class TestMonitoringLoop(unittest.TestCase):

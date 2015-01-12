@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import ConfigParser
 import inspect
 import logging
 import functools
+import re
 
 import eventlet
 
@@ -25,6 +25,11 @@ from swift_scality_backend.exceptions import SproxydConfException, \
     InvariantViolation
 
 DEFAULT_LOGGER = logging.getLogger(__name__)
+
+# This regex should work with Sproxyd configuration whether its
+# format is JSON (Ring 5+) or INI (Ring 4)
+BY_PATH_ENABLED_RE = re.compile(r'^\s*"?by_path_enabled[":=]+\s*(1|true)[",]*\s*$',
+                                flags=re.IGNORECASE)
 
 
 def trace(f):
@@ -103,37 +108,13 @@ def monitoring_loop(ping, on_up, on_down):
 def is_sproxyd_conf_valid(conf):
     '''Check the Sproxyd configuration is valid to use with the Swift driver
 
-    @param conf a file like object from which the Sproxyd conf can be read
+    @param conf: Sproxyd configuration
+    @type conf: `str`
     '''
 
-    config = ConfigParser.RawConfigParser()
-    try:
-        config.readfp(conf)
-    except ConfigParser.Error:
-        raise SproxydConfException("Unable to parse configuration")
+    for line in conf.split("\n"):
+        if BY_PATH_ENABLED_RE.match(line):
+            return True
 
-    try:
-        section = config.sections()[0]
-    except (ConfigParser.Error, IndexError):
-        raise SproxydConfException("Unable to find an INI section")
-
-    try:
-        if config.get(section, "by_path_enabled").strip('"').lower() not in ("1", "true"):
-            raise SproxydConfException("Sproxyd query by path must be enabled")
-    except (ConfigParser.Error, ValueError):
-        raise SproxydConfException("Unable to find or parse the "
-                                   "by_path_enabled flag")
-
-    try:
-        int(config.get(section, "by_path_service_id").strip('"'), 16)
-    except (ConfigParser.Error, ValueError):
-        raise SproxydConfException("Unable to find or parse the "
-                                   "by_path_service_id flag")
-
-    try:
-        int(config.get(section, "by_path_cos").strip('"'))
-    except (ConfigParser.Error, ValueError):
-        raise SproxydConfException("Unable to find or parse the "
-                                   "by_path_cos flag")
-
-    return True
+    raise SproxydConfException("Make sure by_path_enabled is set "
+                               "and check Sproxyd logs.")
