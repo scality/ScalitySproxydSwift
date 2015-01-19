@@ -13,7 +13,7 @@ Installation
 use = egg:swift_scality_backend#sproxyd_object
 ```
 
-3. Set the Sproxy host and Sproxy path to connect to in the
+3. Set the Sproxy host(s) and Sproxy path to connect to in the
    `[app:object-server]` section in the same file. If your system supports it
    (anything running a Linux kernel newer than 2.6.17 does), also make sure to
    enable `splice`, which enhances throughput and lowers CPU utilization:
