@@ -1,5 +1,5 @@
 # Copyright (c) 2010-2013 OpenStack, LLC.
-# Copyright (c) 2014 Scality
+# Copyright (c) 2014, 2015 Scality
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ class SproxydFileSystem(object):
 
     def __init__(self, conf, logger):
         self.logger = logger
-        self.conn_timeout = int(conf.get('sproxyd_conn_timeout', 10))
-        self.proxy_timeout = int(conf.get('sproxyd_proxy_timeout', 3))
+        self.conn_timeout = float(conf.get('sproxyd_conn_timeout', 10))
+        self.proxy_timeout = float(conf.get('sproxyd_proxy_timeout', 3))
 
         path = conf.get('sproxyd_path', '/proxy/chord')
         self.base_path = '/%s/' % path.strip('/')
@@ -139,18 +139,6 @@ class SproxydFileSystem(object):
             self.sproxyd_hosts_set)
 
     @utils.trace
-    def do_connect(self, ipaddr, port, method, path, headers=None):
-        """stubable function for connecting."""
-        safe_path = self.base_path + urllib.quote(path)
-        conn = swift.common.bufferedhttp.http_connect_raw(
-            ipaddr, port, method, safe_path, headers)
-        return conn
-
-    def conn_getresponse(self, conn):
-        """stubable function for getting conn responses."""
-        return conn.getresponse()
-
-    @utils.trace
     def _do_http(self, caller_name, handlers, method, path, headers=None):
         '''Common code for handling a single HTTP request
 
@@ -172,6 +160,7 @@ class SproxydFileSystem(object):
         '''
 
         address, port = self.sproxyd_hosts.next()
+        safe_path = self.base_path + urllib.quote(path)
 
         conn = None
 
@@ -186,10 +175,11 @@ class SproxydFileSystem(object):
                 http_reason=response.reason)
 
         with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = self.do_connect(address, port, method, path, headers)
+            conn = swift.common.bufferedhttp.http_connect_raw(
+                address, port, method, safe_path, headers)
 
         with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
-            resp = self.conn_getresponse(conn)
+            resp = conn.getresponse()
             status = resp.status
 
             handler = handlers.get(status, unexpected_http_status)
@@ -280,8 +270,8 @@ class DiskFileWriter(object):
 
         (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
-            self._conn = self._filesystem.do_connect(
-                ipaddr, port, 'PUT', name, headers)
+            self._conn = swift.common.bufferedhttp.http_connect_raw(
+                ipaddr, port, 'PUT', self.safe_path, headers)
 
     def __repr__(self):
         ret = 'DiskFileWriter(filesystem=%r, object_name=%r)'
@@ -294,7 +284,7 @@ class DiskFileWriter(object):
         return self._filesystem.base_path + urllib.quote(self._name)
 
     def write(self, chunk):
-        """Write a chunk of data
+        """Write a chunk of data.
 
         :param chunk: the chunk of data to write as a string object
         """
@@ -304,10 +294,10 @@ class DiskFileWriter(object):
 
     @utils.trace
     def put(self, metadata):
-        """Make the final association
+        """Finalize writing the object.
 
-        :param metadata: dictionary of metadata to be written
-        :param extension: extension to be used when making the file
+        :param metadata: dictionary of metadata to be associated with the
+                         object
         """
         self._conn.send('0\r\n\r\n')
         with contextlib.closing(self._conn):
@@ -356,8 +346,9 @@ class DiskFileReader(object):
         conn = None
 
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            conn = self._filesystem.do_connect(
-                ipaddr, port, 'GET', self._name)
+            conn = swift.common.bufferedhttp.http_connect_raw(ipaddr, port,
+                                                              'GET',
+                                                              self.safe_path)
 
         with contextlib.closing(conn):
             resp = conn.getresponse()
@@ -423,8 +414,10 @@ class DiskFileReader(object):
         conn = None
 
         with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            conn = self._filesystem.do_connect(
-                ipaddr, port, 'GET', self._name, headers)
+            conn = swift.common.bufferedhttp.http_connect_raw(ipaddr, port,
+                                                              'GET',
+                                                              self.safe_path,
+                                                              headers)
 
         with contextlib.closing(conn):
             resp = conn.getresponse()

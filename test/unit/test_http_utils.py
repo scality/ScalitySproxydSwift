@@ -90,6 +90,7 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
 
         def server(client, _):
             client.sendall(data)
+            client.close()
 
         server_thread = eventlet.spawn(
             eventlet.serve, server_socket, server)
@@ -114,4 +115,4 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
                 off = len(fst) + len(snd)
                 self.assertEqual(''.join(rest), data[off:])
         finally:
-            server_thread.cancel()
+            server_thread.kill()
