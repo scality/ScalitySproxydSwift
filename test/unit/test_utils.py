@@ -124,7 +124,7 @@ class TestMonitoringLoop(unittest.TestCase):
         ping = mock.Mock(side_effect=cycle)
 
         thread = eventlet.spawn(functools.partial(self.loop, ping))
-        eventlet.sleep(0.1)
+        eventlet.sleep(0.2)
         try:
             self.assertGreaterEqual(ping.call_count, 5)
             # We've slept for a time long enough to see several (>=3 even

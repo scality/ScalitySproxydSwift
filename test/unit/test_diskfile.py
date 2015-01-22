@@ -20,15 +20,20 @@ import itertools
 import httplib
 import pickle
 import StringIO
+import socket
 import unittest
 import urllib
 import weakref
 
 
 import eventlet
+eventlet.monkey_patch()
+import eventlet.wsgi
 import mock
 import swift.common.exceptions
 import swift.common.utils
+import urllib3
+import urllib3.exceptions
 
 NEW_SPLICE = 'new_splice'
 OLD_SPLICE = 'old_splice'
@@ -54,9 +59,6 @@ class FakeHTTPResp(httplib.HTTPResponse):
     def __init__(self, status=200):
         self.status = status
         self.reason = 'because'
-        usermd = base64.b64encode(pickle.dumps('fake'))
-        headers = StringIO.StringIO('x-scal-usermd: %s' % usermd)
-        self.msg = httplib.HTTPMessage(headers)
 
     def read(self):
         return 'My mock msg'
@@ -165,10 +167,9 @@ class TestSproxydFileSystem(unittest.TestCase):
     def test_init_no_splice_at_all(self):
         self._test_init_splice_unavailable()
 
-    @mock.patch.object(urllib, 'urlopen')
-    @mock.patch('swift_scality_backend.utils.is_sproxyd_conf_valid',
+    @mock.patch('urllib3.PoolManager.request',
                 side_effect=SproxydConfException(""))
-    def test_ping_with_bad_sproxyd_conf(self, conf_checker_mock, urlopen_mock):
+    def test_ping_with_bad_sproxyd_conf(self, request_mock):
         mock_logger = mock.Mock()
         sfs = SproxydFileSystem({}, mock_logger)
         ping_result = sfs.ping('http://ignored')
@@ -179,7 +180,7 @@ class TestSproxydFileSystem(unittest.TestCase):
         self.assertIs(type(exc), SproxydConfException)
         self.assertIn("is invalid:", msg)
 
-    @mock.patch.object(urllib, 'urlopen', side_effect=Exception)
+    @mock.patch('urllib3.PoolManager.request', side_effect=Exception)
     def test_ping_with_unexpected_exc(self, urlopen_mock):
         mock_logger = mock.Mock()
         sfs = SproxydFileSystem({}, mock_logger)
@@ -207,40 +208,46 @@ class TestSproxydFileSystem(unittest.TestCase):
         self.assertNotIn(('localhost', 81), sfs.sproxyd_hosts_set)
         self.assertEqual([], list(sfs.sproxyd_hosts))
 
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                side_effect=lambda *args: eventlet.sleep(0.02))
+    @mock.patch('socket.socket.connect', side_effect=socket.timeout)
     def test_do_http_connection_timeout(self, mock_http_connect):
-        sfs = SproxydFileSystem({'sproxyd_conn_timeout': 0.01}, mock.Mock())
-        self.assertRaises(swift.common.exceptions.ConnectionTimeout,
-                          sfs._do_http, 'me', {}, 'HTTP_METH', '/')
+        timeout = 0.01
+        sfs = SproxydFileSystem({'sproxyd_conn_timeout': timeout}, mock.Mock())
+
+        regex = r'^.*connect timeout=%s.*$' % timeout
+        self.assertRaisesRegexp(urllib3.exceptions.ConnectTimeoutError, regex,
+                                sfs._do_http, 'me', {}, 'HTTP_METH', '/')
 
     def test_do_http_timeout(self):
-        class HTTPConn(object):
+        server1 = eventlet.listen(('127.0.0.1', 0))
+        (ip, port) = server1.getsockname()
 
-            def getresponse(self):
-                eventlet.sleep(0.02)
+        def run_server1(sock):
+            (client, addr) = sock.accept()
+            eventlet.sleep(0.1)
 
-            def close(self):
-                pass
+        t = eventlet.spawn(run_server1, server1)
+        timeout = 0.01
+        sfs = SproxydFileSystem({'sproxyd_host': '%s:%d' % (ip, port),
+                                 'sproxyd_proxy_timeout': timeout},
+                                mock.Mock())
 
-        sfs = SproxydFileSystem({'sproxyd_proxy_timeout': 0.01}, mock.Mock())
+        regex = r'^.*read timeout=%s.*$' % timeout
+        self.assertRaisesRegexp(urllib3.exceptions.ReadTimeoutError, regex,
+                                sfs._do_http, 'me', {}, 'HTTP_METH', '/')
+        t.kill()
 
-        with mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                        return_value=HTTPConn()):
-            self.assertRaises(eventlet.Timeout, sfs._do_http, 'me',
-                              {}, 'HTTP_METH', '/')
-
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                return_value=FakeHTTPConn())
+    @mock.patch('urllib3.HTTPConnectionPool.request',
+                return_value=urllib3.response.HTTPResponse(body='error',
+                                                           status=500))
     def test_do_http_unexpected_http_status(self, mock_http):
         sfs = SproxydFileSystem({}, mock.Mock())
 
-        msg = r'caller1: %s .*' % mock_http.return_value.getresponse().read()
+        msg = r'^caller1: %s .*' % mock_http.return_value.data
         self.assertRaisesRegexp(SproxydHTTPException, msg, sfs._do_http,
                                 'caller1', {}, 'HTTP_METH', '/')
 
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                return_value=FakeHTTPConn())
+    @mock.patch('urllib3.HTTPConnectionPool.request',
+                return_value=urllib3.response.HTTPResponse(status=200))
     def test_do_http(self, mock_http):
         mock_handler = mock.Mock()
 
@@ -251,40 +258,47 @@ class TestSproxydFileSystem(unittest.TestCase):
         headers = {'k': 'v'}
         sfs._do_http('caller1', {200: mock_handler}, method, path, headers)
 
-        mock_http.assert_called_with(mock.ANY, mock.ANY, method,
-                                     sfs.base_path + urllib.quote(path),
-                                     headers)
-        call_args = mock_handler.call_args
-        self.assertIsNotNone(call_args)
-        expected_arg = mock_http.return_value.getresponse()
-        self.assertIsInstance(call_args[0][0], type(expected_arg))
+        mock_http.assert_called_once_with(method,
+                                          sfs.base_path + urllib.quote(path),
+                                          headers=headers,
+                                          preload_content=False)
+        mock_handler.assert_called_once_with(mock_http.return_value)
 
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                return_value=FakeHTTPConn())
-    def test_get_meta(self, mock_http):
+    @mock.patch('urllib3.HTTPConnectionPool.request')
+    def test_get_meta_on_200(self, mock_http):
+        headers = {'x-scal-usermd': base64.b64encode(pickle.dumps('fake'))}
+        mock_http.return_value = urllib3.response.HTTPResponse(status=200,
+                                                               headers=headers)
+
         sfs = SproxydFileSystem({}, mock.Mock())
         metadata = sfs.get_meta('object_name_1')
 
-        self.assertEqual(1, mock_http.call_count)
-        mock_http.assert_called_with(mock.ANY, mock.ANY, 'HEAD',
-                                     sfs.base_path + 'object_name_1',
-                                     None)
+        mock_http.assert_called_once_with('HEAD',
+                                          sfs.base_path + 'object_name_1',
+                                          headers=None, preload_content=False)
         self.assertEqual('fake', metadata)
 
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                return_value=FakeHTTPConn())
+    @mock.patch('urllib3.HTTPConnectionPool.request',
+                return_value=urllib3.response.HTTPResponse(status=404))
+    def test_get_meta_on_404(self, mock_http):
+        sfs = SproxydFileSystem({}, mock.Mock())
+
+        self.assertIsNone(sfs.get_meta('object_name_1'))
+
+    @mock.patch('urllib3.HTTPConnectionPool.request',
+                return_value=urllib3.response.HTTPResponse(status=200))
     def test_put_meta(self, mock_http):
         sfs = SproxydFileSystem({}, mock.Mock())
         sfs.put_meta('object_name_1', 'fake')
 
         self.assertEqual(1, mock_http.call_count)
-        (ip, port, method, path, headers), kwargs = mock_http.call_args
+        (method, path), kwargs = mock_http.call_args
         self.assertEqual('PUT', method)
         self.assertIn('object_name_1', path)
-        self.assertIn('x-scal-cmd', headers)
-        self.assertEqual('update-usermd', headers['x-scal-cmd'])
-        self.assertIn('x-scal-usermd', headers)
-        self.assertGreater(len(headers['x-scal-usermd']), 0)
+        self.assertIn('x-scal-cmd', kwargs['headers'])
+        self.assertEqual('update-usermd', kwargs['headers']['x-scal-cmd'])
+        self.assertIn('x-scal-usermd', kwargs['headers'])
+        self.assertGreater(len(kwargs['headers']['x-scal-usermd']), 0)
 
     def test_put_meta_with_no_metadata(self):
         sfs = SproxydFileSystem({}, mock.Mock())
@@ -292,16 +306,33 @@ class TestSproxydFileSystem(unittest.TestCase):
         self.assertRaisesRegexp(SproxydHTTPException, 'no usermd',
                                 sfs.put_meta, 'object_name_1', None)
 
-    @mock.patch('swift.common.bufferedhttp.http_connect_raw',
-                return_value=FakeHTTPConn())
+    @mock.patch('urllib3.HTTPConnectionPool.request',
+                return_value=urllib3.response.HTTPResponse(status=200))
     def test_del_object(self, mock_http):
         sfs = SproxydFileSystem({}, mock.Mock())
         sfs.del_object('object_name_1')
 
-        self.assertEqual(1, mock_http.call_count)
-        mock_http.assert_called_with(mock.ANY, mock.ANY, 'DELETE',
-                                     sfs.base_path + 'object_name_1',
-                                     None)
+        mock_http.assert_called_once_with('DELETE',
+                                          sfs.base_path + 'object_name_1',
+                                          headers=None, preload_content=False)
+
+    def test_get_object(self):
+        server = eventlet.listen(('127.0.0.1', 0))
+        (ip, port) = server.getsockname()
+
+        def hello_world(env, start_response):
+            start_response('200 OK', [('Content-Type', 'text/plain')])
+            return ['Hello, World!\r\n']
+
+        t = eventlet.spawn(eventlet.wsgi.server, server, hello_world)
+
+        sfs = SproxydFileSystem({'sproxyd_host': '%s:%d' % (ip, port)},
+                                mock.Mock())
+        obj = sfs.get_object('ignored')
+
+        self.assertEqual('Hello, World!\r\n', next(obj))
+        self.assertRaises(StopIteration, next, obj)
+        t.kill()
 
     @mock.patch('eventlet.spawn')
     def test_del_instance(self, mock_spawn):
@@ -318,6 +349,10 @@ class TestSproxydFileSystem(unittest.TestCase):
 
         mock_spawn().kill.assert_called_once_with()
 
+    def test_get_diskfile(self):
+        sfs = SproxydFileSystem({}, mock.Mock())
+        self.assertIsInstance(sfs.get_diskfile('a', 'c', 'o'), DiskFile)
+
 
 class TestDiskFileWriter(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFileWriter"""
@@ -329,11 +364,10 @@ class TestDiskFileWriter(unittest.TestCase):
         # Note the white space, to test proper URL encoding
         DiskFileWriter(sfs, 'ob j')
 
-        self.assertEqual(1, mock_http.call_count)
         expected_header = {'transfer-encoding': 'chunked'}
-        mock_http.assert_called_with(mock.ANY, mock.ANY, 'PUT',
-                                     sfs.base_path + urllib.quote('ob j'),
-                                     expected_header)
+        mock_http.assert_called_once_with(mock.ANY, mock.ANY, 'PUT',
+                                          sfs.base_path + urllib.quote('ob j'),
+                                          expected_header)
 
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
                 return_value=FakeHTTPConn(404))
@@ -418,8 +452,7 @@ class TestDiskFile(unittest.TestCase):
 
         df.write_metadata({'k': 'v'})
 
-        self.assertEqual(1, mock_put_meta.call_count)
-        mock_put_meta.assert_called_with('a/c/o', {'k': 'v'})
+        mock_put_meta.assert_called_once_with('a/c/o', {'k': 'v'})
 
     @mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.del_object')
     def test_delete(self, mock_del_object):
@@ -428,8 +461,7 @@ class TestDiskFile(unittest.TestCase):
 
         df.delete("ignored")
 
-        self.assertEqual(1, mock_del_object.call_count)
-        mock_del_object.assert_called_with('a/c/o')
+        mock_del_object.assert_called_once_with('a/c/o')
 
 
 def test_ping_when_network_exception_is_raised():
@@ -438,7 +470,7 @@ def test_ping_when_network_exception_is_raised():
         logger = mock.Mock()
         filesystem = SproxydFileSystem({}, logger)
 
-        with mock.patch.object(urllib, 'urlopen', side_effect=expected_exc):
+        with mock.patch('urllib3.PoolManager.request', side_effect=expected_exc):
             ping_result = filesystem.ping('http://ignored/')
 
             assert ping_result is False, ('Ping returned %r, '
@@ -448,5 +480,5 @@ def test_ping_when_network_exception_is_raised():
             assert type(exc) is expected_exc
             assert "network error" in msg
 
-    for exc in [eventlet.Timeout, httplib.HTTPException, IOError]:
+    for exc in [IOError, urllib3.exceptions.HTTPError]:
         yield assert_ping_failed, exc

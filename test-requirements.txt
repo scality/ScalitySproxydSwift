@@ -6,3 +6,4 @@ nosexcover
 openstack.nose_plugin
 nosehtmloutput
 mock>=1.0
+urllib3>=1.9,<2.0
