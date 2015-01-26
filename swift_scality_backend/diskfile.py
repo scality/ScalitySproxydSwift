@@ -183,19 +183,27 @@ class SproxydFileSystem(object):
                 http_reason=response.reason)
 
         pool = self.http_pools.connection_from_host(address, port)
-        response = None
-        try:
+
+        def request_once():
             response = pool.request(method, safe_path, headers=headers, preload_content=False)
-            handler = handlers.get(response.status, unexpected_http_status)
 
             self.logger.debug('The HTTP connection pool to %s:%d serviced %d '
                               'requests. Its max size ever is %d.', pool.host,
                               pool.port, pool.num_requests, pool.num_connections)
 
-            return handler(response)
-        finally:
-            if response:
-                response.release_conn()
+            handler = handlers.get(response.status, unexpected_http_status)
+            result = handler(response)
+            # Drain remaining content using (read(64000))
+            response.release_conn()
+            return result
+
+        try:
+            return request_once()
+        # ProtocolError('Connection aborted.', BadStatusLine("''",)
+        # Should loop at most 10 times
+        except urllib3.exceptions.ProtocolError as exc:
+            self.logger.warning("HTTP Error : %r", exc)
+            return request_once()
 
     @utils.trace
     def get_meta(self, name):

@@ -320,9 +320,11 @@ class TestSproxydFileSystem(unittest.TestCase):
         server = eventlet.listen(('127.0.0.1', 0))
         (ip, port) = server.getsockname()
 
+        content = 'Hello, World!'
+
         def hello_world(env, start_response):
             start_response('200 OK', [('Content-Type', 'text/plain')])
-            return ['Hello, World!\r\n']
+            return [content]
 
         t = eventlet.spawn(eventlet.wsgi.server, server, hello_world)
 
@@ -330,8 +332,9 @@ class TestSproxydFileSystem(unittest.TestCase):
                                 mock.Mock())
         obj = sfs.get_object('ignored')
 
-        self.assertEqual('Hello, World!\r\n', next(obj))
-        self.assertRaises(StopIteration, next, obj)
+        self.assertEqual(content, ''.join(obj))
+        # Assert that `obj` is an Iterable
+        self.assertRaises(StopIteration, obj.next())
         t.kill()
 
     @mock.patch('eventlet.spawn')
