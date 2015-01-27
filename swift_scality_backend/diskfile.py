@@ -22,6 +22,7 @@ import functools
 import httplib
 import itertools
 import pickle
+import types
 import urllib
 
 import eventlet
@@ -170,6 +171,7 @@ class SproxydFileSystem(object):
         '''
 
         address, port = self.sproxyd_hosts.next()
+        pool = self.http_pools.connection_from_host(address, port)
         safe_path = self.base_path + urllib.quote(path)
 
         def unexpected_http_status(response):
@@ -182,28 +184,25 @@ class SproxydFileSystem(object):
                 http_status=response.status,
                 http_reason=response.reason)
 
-        pool = self.http_pools.connection_from_host(address, port)
+        response = pool.request(method, safe_path, headers=headers, preload_content=False)
 
-        def request_once():
-            response = pool.request(method, safe_path, headers=headers, preload_content=False)
+        self.logger.debug('The HTTP connection pool to %s:%d serviced %d '
+                          'requests. Its max size ever is %d.', pool.host,
+                          pool.port, pool.num_requests, pool.num_connections)
 
-            self.logger.debug('The HTTP connection pool to %s:%d serviced %d '
-                              'requests. Its max size ever is %d.', pool.host,
-                              pool.port, pool.num_requests, pool.num_connections)
+        handler = handlers.get(response.status, unexpected_http_status)
+        result = handler(response)
 
-            handler = handlers.get(response.status, unexpected_http_status)
-            result = handler(response)
-            # Drain remaining content using (read(64000))
-            response.release_conn()
-            return result
+        # If the handler returns a generator, it must handle the connection
+        # cleanup.
+        if not isinstance(result, types.GeneratorType):
+            try:
+                swift_scality_backend.http_utils.drain_connection(response)
+                response.release_conn()
+            except Exception:
+                pass
 
-        try:
-            return request_once()
-        # ProtocolError('Connection aborted.', BadStatusLine("''",)
-        # Should loop at most 10 times
-        except urllib3.exceptions.ProtocolError as exc:
-            self.logger.warning("HTTP Error : %r", exc)
-            return request_once()
+        return result
 
     @utils.trace
     def get_meta(self, name):
@@ -215,7 +214,7 @@ class SproxydFileSystem(object):
             return pickle.loads(pickled)
 
         def handle_404(response):
-            return None
+            pass
 
         handlers = {
             200: handle_200,
@@ -236,7 +235,7 @@ class SproxydFileSystem(object):
         }
 
         def handle_200(response):
-            response.read()
+            pass
 
         handlers = {
             200: handle_200,
@@ -254,7 +253,7 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and delete object."""
 
         def handle_200_or_404(response):
-            response.read()
+            pass
 
         handlers = {
             200: handle_200_or_404,
@@ -268,7 +267,9 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and get an object."""
 
         def handle_200_or_206(response):
-            return response.stream(amt=1024 * 64)
+            for chunk in response.stream(amt=1024 * 64):
+                yield chunk
+            response.release_conn()
 
         handlers = {
             200: handle_200_or_206,

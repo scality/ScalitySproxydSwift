@@ -332,9 +332,9 @@ class TestSproxydFileSystem(unittest.TestCase):
                                 mock.Mock())
         obj = sfs.get_object('ignored')
 
-        self.assertEqual(content, ''.join(obj))
+        self.assertEqual(content, obj.next())
         # Assert that `obj` is an Iterable
-        self.assertRaises(StopIteration, obj.next())
+        self.assertRaises(StopIteration, obj.next)
         t.kill()
 
     @mock.patch('eventlet.spawn')

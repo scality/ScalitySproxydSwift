@@ -108,3 +108,8 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
 
     def __exit__(self, *exc_info):
         self.close()
+
+
+def drain_connection(response):
+    while response.read(64 * 1024):
+        pass
