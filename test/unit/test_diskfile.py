@@ -27,7 +27,6 @@ import weakref
 
 
 import eventlet
-eventlet.monkey_patch()
 import eventlet.wsgi
 import mock
 import swift.common.exceptions
@@ -52,6 +51,8 @@ from swift_scality_backend.diskfile import SproxydFileSystem, DiskFileWriter, \
     DiskFileReader, DiskFile
 from swift_scality_backend.exceptions import SproxydConfException, \
     SproxydHTTPException
+
+eventlet.monkey_patch()
 
 
 class FakeHTTPResp(httplib.HTTPResponse):
