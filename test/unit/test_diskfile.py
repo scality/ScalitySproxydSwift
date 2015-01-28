@@ -265,6 +265,18 @@ class TestSproxydFileSystem(unittest.TestCase):
                                           preload_content=False)
         mock_handler.assert_called_once_with(mock_http.return_value)
 
+    def test_do_http_drains_connection(self):
+        sfs = SproxydFileSystem({}, mock.Mock())
+        mock_response = mock.Mock()
+        mock_response.status = 200
+        mock_response.read.side_effect = ['blah', 'blah', '']
+
+        handlers = {200: lambda response: None}
+        with mock.patch('urllib3.HTTPConnectionPool.request', return_value=mock_response):
+            sfs._do_http('caller1', handlers, 'METHOD', '/')
+
+        self.assertEqual(3, mock_response.read.call_count)
+
     @mock.patch('urllib3.HTTPConnectionPool.request')
     def test_get_meta_on_200(self, mock_http):
         headers = {'x-scal-usermd': base64.b64encode(pickle.dumps('fake'))}

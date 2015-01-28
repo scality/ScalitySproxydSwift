@@ -16,6 +16,8 @@
 
 import setuptools
 
+import swift_scality_backend
+
 setuptools.setup(
     name='swift-scality-backend',
     version='0.3.0',
@@ -29,7 +31,7 @@ setuptools.setup(
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 2.7'],
-    install_requires=['swift>=1.13.1', 'eventlet>=0.9.15'],
+    install_requires=swift_scality_backend.__requires__,
     entry_points={
         'paste.app_factory': [
             'sproxyd_object=swift_scality_backend.server:app_factory'],

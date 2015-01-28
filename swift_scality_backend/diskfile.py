@@ -31,8 +31,6 @@ import swift.common.bufferedhttp
 import swift.common.exceptions
 import swift.common.swob
 import swift.common.utils
-import urllib3
-import urllib3.exceptions
 
 try:
     import swift.common.splice
@@ -45,6 +43,8 @@ from swift_scality_backend.exceptions import SproxydHTTPException, \
 import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
+
+urllib3 = utils.get_urllib3()
 
 
 class SproxydFileSystem(object):
