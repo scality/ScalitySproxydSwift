@@ -199,8 +199,10 @@ class SproxydFileSystem(object):
             try:
                 swift_scality_backend.http_utils.drain_connection(response)
                 response.release_conn()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.error("Unexpected exception while releasing an "
+                                  "HTTP connection to %s:%d: %r", pool.host,
+                                  pool.port, exc)
 
         return result
 
