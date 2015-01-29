@@ -111,5 +111,6 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
 
 
 def drain_connection(response):
+    '''Read remaining data of the `Response` to 'clean' underlying socket.'''
     while response.read(64 * 1024):
         pass

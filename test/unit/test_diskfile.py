@@ -308,10 +308,11 @@ class TestSproxydFileSystem(unittest.TestCase):
         (method, path), kwargs = mock_http.call_args
         self.assertEqual('PUT', method)
         self.assertIn('object_name_1', path)
-        self.assertIn('x-scal-cmd', kwargs['headers'])
-        self.assertEqual('update-usermd', kwargs['headers']['x-scal-cmd'])
-        self.assertIn('x-scal-usermd', kwargs['headers'])
-        self.assertGreater(len(kwargs['headers']['x-scal-usermd']), 0)
+        headers = kwargs['headers']
+        self.assertIn('x-scal-cmd', headers)
+        self.assertEqual('update-usermd', headers['x-scal-cmd'])
+        self.assertIn('x-scal-usermd', headers)
+        self.assertGreater(len(headers['x-scal-usermd']), 0)
 
     def test_put_meta_with_no_metadata(self):
         sfs = SproxydFileSystem({}, mock.Mock())

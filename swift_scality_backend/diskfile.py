@@ -185,11 +185,6 @@ class SproxydFileSystem(object):
                 http_reason=response.reason)
 
         response = pool.request(method, safe_path, headers=headers, preload_content=False)
-
-        self.logger.debug('The HTTP connection pool to %s:%d serviced %d '
-                          'requests. Its max size ever is %d.', pool.host,
-                          pool.port, pool.num_requests, pool.num_connections)
-
         handler = handlers.get(response.status, unexpected_http_status)
         result = handler(response)
 
@@ -236,11 +231,8 @@ class SproxydFileSystem(object):
             'x-scal-usermd': base64.b64encode(pickle.dumps(metadata)),
         }
 
-        def handle_200(response):
-            pass
-
         handlers = {
-            200: handle_200,
+            200: lambda _: None,
         }
 
         result = self._do_http('put_meta', handlers, 'PUT', name, headers)
