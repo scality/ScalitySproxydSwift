@@ -175,7 +175,7 @@ class SproxydFileSystem(object):
         safe_path = self.base_path + urllib.quote(path)
 
         def unexpected_http_status(response):
-            message = response.data
+            message = response.read()
 
             raise SproxydHTTPException(
                 '%s: %s' % (caller_name, message),
@@ -211,7 +211,7 @@ class SproxydFileSystem(object):
             return pickle.loads(pickled)
 
         def handle_404(response):
-            pass
+            return None
 
         handlers = {
             200: handle_200,
@@ -247,7 +247,7 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and delete object."""
 
         def handle_200_or_404(response):
-            pass
+            return None
 
         handlers = {
             200: handle_200_or_404,

@@ -237,15 +237,16 @@ class TestSproxydFileSystem(unittest.TestCase):
                                 sfs._do_http, 'me', {}, 'HTTP_METH', '/')
         t.kill()
 
-    @mock.patch('urllib3.HTTPConnectionPool.request',
-                return_value=urllib3.response.HTTPResponse(body='error',
-                                                           status=500))
-    def test_do_http_unexpected_http_status(self, mock_http):
-        sfs = SproxydFileSystem({}, mock.Mock())
+    def test_do_http_unexpected_http_status(self):
+        mock_response = mock.Mock()
+        mock_response.status = 500
+        mock_response.read.return_value = 'error'
 
-        msg = r'^caller1: %s .*' % mock_http.return_value.data
-        self.assertRaisesRegexp(SproxydHTTPException, msg, sfs._do_http,
-                                'caller1', {}, 'HTTP_METH', '/')
+        sfs = SproxydFileSystem({}, mock.Mock())
+        msg = r'^caller1: %s .*' % mock_response.read.return_value
+        with mock.patch('urllib3.HTTPConnectionPool.request', return_value=mock_response):
+            self.assertRaisesRegexp(SproxydHTTPException, msg, sfs._do_http,
+                                    'caller1', {}, 'HTTP_METH', '/')
 
     @mock.patch('urllib3.HTTPConnectionPool.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
