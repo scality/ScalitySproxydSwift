@@ -5,7 +5,7 @@ function install_deb(){
 }
 
 function install_centos(){
-    sudo yum install -i python-dev libffi-dev python-pip    
+    sudo yum -y install python-dev libffi-dev python-pip    
 }
 
 
