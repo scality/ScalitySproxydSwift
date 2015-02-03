@@ -22,6 +22,7 @@ import functools
 import httplib
 import itertools
 import pickle
+import types
 import urllib
 
 import eventlet
@@ -43,6 +44,8 @@ import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
 
+urllib3 = utils.get_urllib3()
+
 
 class SproxydFileSystem(object):
     """A sproxyd file system scheme."""
@@ -57,8 +60,8 @@ class SproxydFileSystem(object):
 
         self.healthcheck_threads = []
         self.sproxyd_hosts_set = set()
-        hosts = conf.get('sproxyd_host', 'localhost:81')
-        for host in hosts.strip(',').split(","):
+        hosts = conf.get('sproxyd_host', 'localhost:81').strip(',')
+        for host in hosts.split(","):
             ip_addr, port = host.strip().split(':')
             self.sproxyd_hosts_set.add((ip_addr, int(port)))
 
@@ -93,17 +96,25 @@ class SproxydFileSystem(object):
         if conf_wants_splice and system_has_splice:
             self.use_splice = True
 
+        timeout = urllib3.Timeout(connect=self.conn_timeout,
+                                  read=self.proxy_timeout)
+        # One HTTP Connection pool per sproxyd host
+        self.http_pools = urllib3.PoolManager(len(self.sproxyd_hosts_set),
+                                              timeout=timeout, retries=False,
+                                              maxsize=32)
+
     def ping(self, url):
+        """Retrieves the Sproxyd active configuration for health checking."""
         try:
-            with eventlet.Timeout(1):
-                conf = urllib.urlopen(url)
-                return utils.is_sproxyd_conf_valid(conf.read())
-        except (IOError, httplib.HTTPException, eventlet.Timeout) as e:
+            timeout = urllib3.Timeout(1)
+            conf = self.http_pools.request('GET', url, timeout=timeout)
+            return utils.is_sproxyd_conf_valid(conf.data)
+        except (IOError, urllib3.exceptions.HTTPError) as exc:
             self.logger.info("Could not read Sproxyd configuration at %s "
-                             "due to a network error: %r", url, e)
-        except SproxydConfException as e:
+                             "due to a network error: %r", url, exc)
+        except SproxydConfException as exc:
             self.logger.warning("Sproxyd configuration at %s is invalid: "
-                                "%s", url, e)
+                                "%s", url, exc)
         except:
             self.logger.exception("Unexpected exception during Sproxyd "
                                   "health check of %s", url)
@@ -160,9 +171,8 @@ class SproxydFileSystem(object):
         '''
 
         address, port = self.sproxyd_hosts.next()
+        pool = self.http_pools.connection_from_host(address, port)
         safe_path = self.base_path + urllib.quote(path)
-
-        conn = None
 
         def unexpected_http_status(response):
             message = response.read()
@@ -170,20 +180,26 @@ class SproxydFileSystem(object):
             raise SproxydHTTPException(
                 '%s: %s' % (caller_name, message),
                 ipaddr=address, port=port,
-                path=self.base_path,
+                path=safe_path,
                 http_status=response.status,
                 http_reason=response.reason)
 
-        with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-            conn = swift.common.bufferedhttp.http_connect_raw(
-                address, port, method, safe_path, headers)
+        response = pool.request(method, safe_path, headers=headers, preload_content=False)
+        handler = handlers.get(response.status, unexpected_http_status)
+        result = handler(response)
 
-        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
-            resp = conn.getresponse()
-            status = resp.status
+        # If the handler returns a generator, it must handle the connection
+        # cleanup.
+        if not isinstance(result, types.GeneratorType):
+            try:
+                swift_scality_backend.http_utils.drain_connection(response)
+                response.release_conn()
+            except Exception as exc:
+                self.logger.error("Unexpected exception while releasing an "
+                                  "HTTP connection to %s:%d: %r", pool.host,
+                                  pool.port, exc)
 
-            handler = handlers.get(status, unexpected_http_status)
-            return handler(resp)
+        return result
 
     @utils.trace
     def get_meta(self, name):
@@ -215,11 +231,8 @@ class SproxydFileSystem(object):
             'x-scal-usermd': base64.b64encode(pickle.dumps(metadata)),
         }
 
-        def handle_200(response):
-            response.read()
-
         handlers = {
-            200: handle_200,
+            200: lambda _: None,
         }
 
         result = self._do_http('put_meta', handlers, 'PUT', name, headers)
@@ -234,7 +247,7 @@ class SproxydFileSystem(object):
         """Connect to sproxyd and delete object."""
 
         def handle_200_or_404(response):
-            response.read()
+            return None
 
         handlers = {
             200: handle_200_or_404,
@@ -242,6 +255,22 @@ class SproxydFileSystem(object):
         }
 
         return self._do_http('del_object', handlers, 'DELETE', name)
+
+    @utils.trace
+    def get_object(self, name, headers=None):
+        """Connect to sproxyd and get an object."""
+
+        def handle_200_or_206(response):
+            for chunk in response.stream(amt=1024 * 64):
+                yield chunk
+            response.release_conn()
+
+        handlers = {
+            200: handle_200_or_206,
+            206: handle_200_or_206
+        }
+
+        return self._do_http('get_object', handlers, 'GET', name, headers)
 
     @utils.trace
     def get_diskfile(self, account, container, obj, **kwargs):
@@ -334,26 +363,11 @@ class DiskFileReader(object):
 
     @property
     def safe_path(self):
-        return self._filesystem.base_path + urllib.quote(self.name)
-
-    @property
-    def name(self):
-        return self._name
+        return self._filesystem.base_path + urllib.quote(self._name)
 
     @utils.trace
     def __iter__(self):
-        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
-        conn = None
-
-        with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            conn = swift.common.bufferedhttp.http_connect_raw(ipaddr, port,
-                                                              'GET',
-                                                              self.safe_path)
-
-        with contextlib.closing(conn):
-            resp = conn.getresponse()
-            for chunk in swift_scality_backend.http_utils.stream(resp):
-                yield chunk
+        return self._filesystem.get_object(self._name)
 
     @utils.trace
     def can_zero_copy_send(self):
@@ -410,19 +424,7 @@ class DiskFileReader(object):
             'range': 'bytes=' + str(start) + '-' + str(stop)
         }
 
-        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
-        conn = None
-
-        with swift.common.exceptions.ConnectionTimeout(self._filesystem.conn_timeout):
-            conn = swift.common.bufferedhttp.http_connect_raw(ipaddr, port,
-                                                              'GET',
-                                                              self.safe_path,
-                                                              headers)
-
-        with contextlib.closing(conn):
-            resp = conn.getresponse()
-            for chunk in swift_scality_backend.http_utils.stream(resp):
-                yield chunk
+        return self._filesystem.get_object(self._name, headers)
 
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):

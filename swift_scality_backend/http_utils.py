@@ -15,7 +15,6 @@
 
 '''HTTP client utilities'''
 
-import errno
 import httplib
 import socket
 
@@ -111,26 +110,7 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
         self.close()
 
 
-def stream(fp, chunksize=(1024 * 64)):
-    '''Yield blocks of data from a file-like object using a given chunk size
-
-    This generator yield blocks from the given file-like object `fp` by calling
-    its `read` method repeatedly, stopping the loop once a zero-length value is
-    returned.
-
-    Any `OSError` or `IOError` with `errno` equal to `errno.EINTR` will be
-    caught and the loop will continue to run.
-    '''
-    while True:
-        try:
-            chunk = fp.read(chunksize)
-        except (OSError, IOError) as exc:
-            if getattr(exc, 'errno', None) == errno.EINTR:
-                continue
-            else:
-                raise
-
-        if len(chunk) != 0:
-            yield chunk
-        else:
-            break
+def drain_connection(response):
+    '''Read remaining data of the `Response` to 'clean' underlying socket.'''
+    while response.read(64 * 1024):
+        pass

@@ -17,6 +17,7 @@
 
 import functools
 import itertools
+import types
 import unittest
 
 import eventlet
@@ -137,3 +138,8 @@ class TestMonitoringLoop(unittest.TestCase):
             self.assertLessEqual(abs(diff), 1)
         finally:
             thread.kill()
+
+
+def test_get_urllib3():
+    urllib3 = utils.get_urllib3()
+    assert isinstance(urllib3, types.ModuleType)
