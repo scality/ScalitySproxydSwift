@@ -7,8 +7,8 @@ function install_deb(){
 function install_centos(){
     sudo yum -y install python-devel libffi-devel
     # pip is not in the standard repo
-    sudo yum install epel-release
-    sudo yum install python-pip
+    sudo yum -y install epel-release
+    sudo yum -y install python-pip
 }
 
 
