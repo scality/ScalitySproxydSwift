@@ -9,6 +9,11 @@ function install_centos(){
     # pip is not in the standard repo
     sudo yum -y install epel-release
     sudo yum -y install python-pip
+
+    # This gets installed automatically in debian because recommended packages
+    # Doing that manually in centos.
+    sudo yum -y install gcc
+
 }
 
 
