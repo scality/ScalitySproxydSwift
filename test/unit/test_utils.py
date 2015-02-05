@@ -99,7 +99,7 @@ class TestMonitoringLoop(unittest.TestCase):
             # The loop ran for ~0.02 sec, each iteration of the loop should
             # run in ~0.001 sec so there should be ~20 calls to `ping`.
             # We choose 5, just to be on the safe side
-            self.assertGreaterEqual(ping.call_count, 5)
+            self.assertTrue(ping.call_count >= 5)
             self.assertEqual(1, self.on_down.call_count)
             self.assertFalse(self.on_up.called)
         finally:
@@ -111,7 +111,7 @@ class TestMonitoringLoop(unittest.TestCase):
         thread = eventlet.spawn(functools.partial(self.loop, ping))
         eventlet.sleep(0.02)
         try:
-            self.assertGreaterEqual(ping.call_count, 5)
+            self.assertTrue(ping.call_count >= 5)
             self.assertEqual(1, self.on_up.call_count)
             self.assertFalse(self.on_down.called)
         finally:
@@ -126,14 +126,14 @@ class TestMonitoringLoop(unittest.TestCase):
         thread = eventlet.spawn(functools.partial(self.loop, ping))
         eventlet.sleep(0.1)
         try:
-            self.assertGreaterEqual(ping.call_count, 5)
+            self.assertTrue(ping.call_count >= 5)
             # We've slept for a time long enough to see several (>=3 even
             # on a slow machine) UP & DOWN cycles
-            self.assertGreaterEqual(self.on_down.call_count, 3)
-            self.assertGreaterEqual(self.on_up.call_count, 3)
+            self.assertTrue(self.on_down.call_count >= 3)
+            self.assertTrue(self.on_up.call_count >= 3)
 
             # Call to `on_up` and `on_down` must alternate strictly
             diff = abs(self.on_down.call_count - self.on_up.call_count)
-            self.assertLessEqual(abs(diff), 1)
+            self.assertTrue(abs(diff) <= 1)
         finally:
             thread.kill()

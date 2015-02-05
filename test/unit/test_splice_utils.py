@@ -15,7 +15,6 @@
 
 '''Tests for `swift_scality_backend.splice_utils`'''
 
-import unittest
 try:
     import cStringIO as StringIO
 except ImportError:
@@ -26,6 +25,7 @@ import eventlet
 import swift.common.utils
 
 import swift_scality_backend.splice_utils
+import utils
 
 
 def _test_splice_socket_to_socket(test_length):
@@ -95,11 +95,11 @@ except ImportError:
         HAS_SPLICE = False
 
 
-@unittest.skipUnless(HAS_SPLICE, 'No `splice` support')
+@utils.skipIf(not HAS_SPLICE, "No `splice` support")
 def test_splice_socket_to_socket():
     return _test_splice_socket_to_socket(test_length=False)
 
 
-@unittest.skipUnless(HAS_SPLICE, 'No `splice` support')
+@utils.skipIf(not HAS_SPLICE, "No `splice` support")
 def test_splice_socket_to_socket_bounded():
     return _test_splice_socket_to_socket(test_length=True)
