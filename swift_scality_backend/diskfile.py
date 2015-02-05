@@ -178,12 +178,13 @@ class SproxydFileSystem(object):
             conn = swift.common.bufferedhttp.http_connect_raw(
                 address, port, method, safe_path, headers)
 
-        with contextlib.closing(conn), eventlet.Timeout(self.proxy_timeout):
-            resp = conn.getresponse()
-            status = resp.status
+        with contextlib.closing(conn):
+            with eventlet.Timeout(self.proxy_timeout):
+                resp = conn.getresponse()
+                status = resp.status
 
-            handler = handlers.get(status, unexpected_http_status)
-            return handler(resp)
+                handler = handlers.get(status, unexpected_http_status)
+                return handler(resp)
 
     @utils.trace
     def get_meta(self, name):

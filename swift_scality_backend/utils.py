@@ -16,6 +16,7 @@
 import inspect
 import logging
 import functools
+import sys
 import re
 
 import eventlet
@@ -68,8 +69,11 @@ def trace(f):
         # Get & bump call identifier, assume non-preemptive threading
         ctid, tid[0] = tid[0], tid[0] + 1
 
-        all_args = inspect.getcallargs(f, *args, **kwargs)
-        logger.debug('==> %s (%d): call %r', name, ctid, all_args)
+        if sys.version_info >= (2, 7):
+            all_args = inspect.getcallargs(f, *args, **kwargs)
+            logger.debug('==> %s (%d): call %r', name, ctid, all_args)
+        else:
+            logger.debug('==> %s (%d): call', name, ctid)
 
         result = None
 
