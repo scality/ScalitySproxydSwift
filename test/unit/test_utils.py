@@ -143,3 +143,4 @@ class TestMonitoringLoop(unittest.TestCase):
 def test_get_urllib3():
     urllib3 = utils.get_urllib3()
     assert isinstance(urllib3, types.ModuleType)
+    assert urllib3.__version__ in utils.REQUIRES['urllib3']
