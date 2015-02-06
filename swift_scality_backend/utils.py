@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import contextlib
+import functools
 import inspect
 import logging
-import functools
 import re
 import sys
 
@@ -36,8 +36,9 @@ BY_PATH_ENABLED_RE = re.compile(r'^\s*"?by_path_enabled[":=]+\s*(1|true)[",]*\s*
                                 flags=re.IGNORECASE)
 
 # A Dict which values are `pkg_resources.Requirement` objects
-REQUIRES = {req.project_name: req for req in pkg_resources.parse_requirements(
-            swift_scality_backend.__requires__)}
+REQUIRES = dict((req.project_name, req)
+                for req in pkg_resources.parse_requirements(
+                    swift_scality_backend.__requires__))
 
 
 def trace(f):
@@ -76,8 +77,11 @@ def trace(f):
         # Get & bump call identifier, assume non-preemptive threading
         ctid, tid[0] = tid[0], tid[0] + 1
 
-        all_args = inspect.getcallargs(f, *args, **kwargs)
-        logger.debug('==> %s (%d): call %r', name, ctid, all_args)
+        if sys.version_info >= (2, 7):
+            all_args = inspect.getcallargs(f, *args, **kwargs)
+            logger.debug('==> %s (%d): call %r', name, ctid, all_args)
+        else:
+            logger.debug('==> %s (%d): call', name, ctid)
 
         result = None
 
