@@ -55,6 +55,13 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
         with self._make_socket() as sock:
             self.assertRaises(NotImplementedError, sock.writelines, [])
 
+    def test_fail_call_get_buffered_twice(self):
+        with self._make_socket() as sock:
+            sock.get_buffered()
+            self.assertRaises(
+                swift_scality_backend.http_utils.InvariantViolation,
+                sock.get_buffered)
+
     def test_fail_after_get_buffered_read(self):
         with self._make_socket() as sock:
             sock.get_buffered()
