@@ -24,11 +24,17 @@ import unittest
 import urllib
 import weakref
 
-
 import eventlet
 import mock
 import swift.common.exceptions
 import swift.common.utils
+
+from swift_scality_backend.diskfile import SproxydFileSystem, DiskFileWriter, \
+    DiskFileReader, DiskFile
+from swift_scality_backend.exceptions import SproxydConfException, \
+    SproxydHTTPException
+import utils
+
 
 NEW_SPLICE = 'new_splice'
 OLD_SPLICE = 'old_splice'
@@ -41,13 +47,6 @@ except ImportError:
         SPLICE = OLD_SPLICE
     else:
         SPLICE = NO_SPLICE_AT_ALL
-
-
-from swift_scality_backend.diskfile import SproxydFileSystem, DiskFileWriter, \
-    DiskFileReader, DiskFile
-from swift_scality_backend.exceptions import SproxydConfException, \
-    SproxydHTTPException
-import utils
 
 
 class FakeHTTPResp(httplib.HTTPResponse):
