@@ -15,10 +15,21 @@
 # limitations under the License.
 
 import setuptools
+import subprocess
+
+def get_version():
+    prefix = 'swift-scality-backend-'
+    cmd = ['git', 'describe', '--tags', '--dirty', '--always',
+           '--match', '%s*' % prefix]
+
+    result = subprocess.check_output(cmd).strip()
+    assert result.startswith(prefix)
+
+    return result[len(prefix):]
 
 setuptools.setup(
     name='swift-scality-backend',
-    version='0.3.1',
+    version=get_version(),
     description='Scality Ring backend for OpenStack Swift',
     url='http://www.scality.com/',
     author='Scality Openstack Engineering Team',
