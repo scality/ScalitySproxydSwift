@@ -14,13 +14,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import distutils.spawn
 import setuptools
+import subprocess
 
 import swift_scality_backend
 
+
+def get_version():
+    def has_git():
+        return distutils.spawn.find_executable('git') is not None
+
+    def is_git_clone():
+        cmd = ['git', 'rev-parse', '--show-toplevel']
+
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        return proc.wait() == 0
+
+    def get_git_version():
+        prefix = 'swift-scality-backend-'
+        cmd = ['git', 'describe', '--tags', '--dirty', '--always',
+               '--match', '%s*' % prefix]
+
+        result = subprocess.check_output(cmd).strip()
+        assert result.startswith(prefix)
+
+        return result[len(prefix):]
+
+    if has_git() and is_git_clone():
+        return get_git_version()
+    else:
+        return '999'
+
+
 setuptools.setup(
     name='swift-scality-backend',
-    version='0.3.0',
+    version=get_version(),
     description='Scality Ring backend for OpenStack Swift',
     url='http://www.scality.com/',
     author='Scality Openstack Engineering Team',

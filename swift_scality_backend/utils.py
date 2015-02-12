@@ -70,8 +70,12 @@ def trace(f):
         logger = getattr(maybe_self, 'logger', DEFAULT_LOGGER)
 
         # Fast-path, don't do any of the 'expensive' things below if the debug
-        # log level isn't enabled anyway
-        if not logger.isEnabledFor(logging.DEBUG):
+        # log level isn't enabled anyway.
+        # The conditional method lookup is for compatibility with the
+        # `LoggerAdapter` implementation in Python 2.6, used by Swift, which
+        # lacks the `isEnabledFor` method (added in Python 2.7). We assume the
+        # log level is enabled in that case.
+        if not getattr(logger, 'isEnabledFor', lambda _: True)(logging.DEBUG):
             return f(*args, **kwargs)
 
         # Get & bump call identifier, assume non-preemptive threading
