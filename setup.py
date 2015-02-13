@@ -31,12 +31,24 @@ def get_version():
 
         return proc.wait() == 0
 
+    if hasattr(subprocess, 'check_output'):
+        check_output = subprocess.check_output
+    else:
+        def check_output(*args, **kwargs):
+            proc = subprocess.Popen(stdout=subprocess.PIPE, *args, **kwargs)
+            output, _ = proc.communicate()
+            rc = proc.poll()
+            if rc != 0:
+                raise subprocess.CalledProcessError(
+                    rc, kwargs.get('args', args[0]), output=output)
+            return output
+
     def get_git_version():
         prefix = 'swift-scality-backend-'
         cmd = ['git', 'describe', '--tags', '--dirty', '--always',
                '--match', '%s*' % prefix]
 
-        result = subprocess.check_output(cmd).strip()
+        result = check_output(cmd).strip()
         assert result.startswith(prefix)
 
         return result[len(prefix):]
