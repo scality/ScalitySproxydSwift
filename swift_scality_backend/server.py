@@ -41,13 +41,16 @@ class ObjectController(swift.obj.server.ObjectController):
         :param conf: WSGI configuration parameter
         """
         self._filesystem = swift_scality_backend.diskfile.SproxydFileSystem(conf, self.logger)
+        self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
                      policy_idx=POLICY_IDX_STUB, **kwargs):
-        """Utility method for instantiating a DiskFile object supporting a
+        """
+        Utility method for instantiating a DiskFile object supporting a
         given REST API.
         """
-        return self._filesystem.get_diskfile(account, container, obj, **kwargs)
+        return self._diskfile_mgr.get_diskfile(
+            self._filesystem, account, container, obj, **kwargs)
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,

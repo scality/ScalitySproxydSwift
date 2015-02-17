@@ -34,7 +34,7 @@ import urllib3
 import urllib3.exceptions
 
 from swift_scality_backend.diskfile import SproxydFileSystem, DiskFileWriter, \
-    DiskFileReader, DiskFile
+    DiskFileReader, DiskFile, DiskFileManager
 from swift_scality_backend.exceptions import SproxydConfException, \
     SproxydHTTPException
 import utils
@@ -82,63 +82,35 @@ class FakeHTTPConn(object):
         pass
 
 
-class TestSproxydFileSystem(unittest.TestCase):
-    """Tests for swift_scality_backend.diskfile.SproxydFileSystem"""
-
-    def test_init_with_default_timeout_values(self):
-        sfs = SproxydFileSystem({}, mock.Mock())
-        self.assertEqual(10, sfs.conn_timeout)
-        self.assertEqual(3, sfs.proxy_timeout)
-
-    def test_init_with_custom_timeout_values(self):
-        conf = {'sproxyd_conn_timeout': 42.1, 'sproxyd_proxy_timeout': 4242.1}
-        sfs = SproxydFileSystem(conf, mock.Mock())
-        self.assertEqual(42.1, sfs.conn_timeout)
-        self.assertEqual(4242.1, sfs.proxy_timeout)
+class TestDiskFileManager(unittest.TestCase):
+    """Tests for swift_scality_backend.diskfile.DiskFileManager"""
 
     def test_init_with_default_splice(self):
-        sfs = SproxydFileSystem({}, mock.Mock())
-        self.assertFalse(sfs.use_splice)
+        dfm = DiskFileManager({}, mock.Mock())
+        self.assertFalse(dfm.use_splice)
 
     def test_init_with_splice_no(self):
-        sfs = SproxydFileSystem({'splice': 'no'}, mock.Mock())
-        self.assertFalse(sfs.use_splice)
-
-    def test_init_base_path_has_slashes(self):
-        conf = {'sproxyd_path': 'missing_slashes'}
-        sfs = SproxydFileSystem(conf, mock.Mock())
-        self.assertEqual('/missing_slashes/', sfs.base_path)
-
-    def test_init_sproxyd_hosts(self):
-        # Mind the white spaces
-        conf = {'sproxyd_host': ' host1:81 , host2:82 '}
-        sfs = SproxydFileSystem(conf, mock.Mock())
-        expected_sproxyd_hosts_set = set([('host1', 81), ('host2', 82)])
-        self.assertEqual(expected_sproxyd_hosts_set, sfs.sproxyd_hosts_set)
-
-    def test_init_monitoring_threads(self):
-        conf = {'sproxyd_host': 'host1:81,host2:82'}
-        sfs = SproxydFileSystem(conf, mock.Mock())
-        self.assertEqual(2, len(sfs.healthcheck_threads))
+        dfm = DiskFileManager({'splice': 'no'}, mock.Mock())
+        self.assertFalse(dfm.use_splice)
 
     def _test_init_splice_unavailable(self):
-        sfs = SproxydFileSystem({'splice': 'no'}, mock.Mock())
-        self.assertFalse(sfs.use_splice, "Splice not wanted by conf and not " +
+        dfm = DiskFileManager({'splice': 'no'}, mock.Mock())
+        self.assertFalse(dfm.use_splice, "Splice not wanted by conf and not " +
                          "available from system: use_splice should be False")
 
         mock_logger = mock.Mock()
-        sfs = SproxydFileSystem({'splice': 'yes'}, mock_logger)
-        self.assertFalse(sfs.use_splice, "Splice wanted by conf but not " +
+        dfm = DiskFileManager({'splice': 'yes'}, mock_logger)
+        self.assertFalse(dfm.use_splice, "Splice wanted by conf but not " +
                          "available from system: use_splice should be False")
         self.assertTrue(mock_logger.warn.called)
 
     def _test_init_splice_available(self):
-        sfs = SproxydFileSystem({'splice': 'yes'}, mock.Mock())
-        self.assertTrue(sfs.use_splice, "Splice wanted by conf and " +
+        dfm = DiskFileManager({'splice': 'yes'}, mock.Mock())
+        self.assertTrue(dfm.use_splice, "Splice wanted by conf and " +
                         "available from system: use_splice should be True")
 
-        sfs = SproxydFileSystem({'splice': 'no'}, mock.Mock())
-        self.assertFalse(sfs.use_splice, "Splice not wanted by conf though " +
+        dfm = DiskFileManager({'splice': 'no'}, mock.Mock())
+        self.assertFalse(dfm.use_splice, "Splice not wanted by conf though " +
                          "available from system: use_splice should be False")
 
     @utils.skipIf(SPLICE != NEW_SPLICE, 'Need new `splice` support')
@@ -168,6 +140,42 @@ class TestSproxydFileSystem(unittest.TestCase):
     @utils.skipIf(SPLICE != NO_SPLICE_AT_ALL, 'This Swift knows `splice`')
     def test_init_no_splice_at_all(self):
         self._test_init_splice_unavailable()
+
+    def test_get_diskfile(self):
+        dfm = DiskFileManager({}, mock.Mock())
+        self.assertTrue(isinstance(dfm.get_diskfile('a', 'c', 'o'), DiskFile))
+
+
+class TestSproxydFileSystem(unittest.TestCase):
+    """Tests for swift_scality_backend.diskfile.SproxydFileSystem"""
+
+    def test_init_with_default_timeout_values(self):
+        sfs = SproxydFileSystem({}, mock.Mock())
+        self.assertEqual(10, sfs.conn_timeout)
+        self.assertEqual(3, sfs.proxy_timeout)
+
+    def test_init_with_custom_timeout_values(self):
+        conf = {'sproxyd_conn_timeout': 42.1, 'sproxyd_proxy_timeout': 4242.1}
+        sfs = SproxydFileSystem(conf, mock.Mock())
+        self.assertEqual(42.1, sfs.conn_timeout)
+        self.assertEqual(4242.1, sfs.proxy_timeout)
+
+    def test_init_base_path_has_slashes(self):
+        conf = {'sproxyd_path': 'missing_slashes'}
+        sfs = SproxydFileSystem(conf, mock.Mock())
+        self.assertEqual('/missing_slashes/', sfs.base_path)
+
+    def test_init_sproxyd_hosts(self):
+        # Mind the white spaces
+        conf = {'sproxyd_host': ' host1:81 , host2:82 '}
+        sfs = SproxydFileSystem(conf, mock.Mock())
+        expected_sproxyd_hosts_set = set([('host1', 81), ('host2', 82)])
+        self.assertEqual(expected_sproxyd_hosts_set, sfs.sproxyd_hosts_set)
+
+    def test_init_monitoring_threads(self):
+        conf = {'sproxyd_host': 'host1:81,host2:82'}
+        sfs = SproxydFileSystem(conf, mock.Mock())
+        self.assertEqual(2, len(sfs.healthcheck_threads))
 
     @mock.patch('urllib3.PoolManager.request',
                 side_effect=SproxydConfException(""))
@@ -368,10 +376,6 @@ class TestSproxydFileSystem(unittest.TestCase):
 
         mock_spawn().kill.assert_called_once_with()
 
-    def test_get_diskfile(self):
-        sfs = SproxydFileSystem({}, mock.Mock())
-        self.assertTrue(isinstance(sfs.get_diskfile('a', 'c', 'o'), DiskFile))
-
 
 class TestDiskFileWriter(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFileWriter"""
@@ -416,7 +420,7 @@ class TestDiskFile(unittest.TestCase):
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         self.assertRaises(swift.common.exceptions.DiskFileDeleted, df.open)
         mock_get_meta.assert_called_once_with('a/c/o')
@@ -425,7 +429,7 @@ class TestDiskFile(unittest.TestCase):
                 return_value={'name': 'o'})
     def test_open(self, mock_get_meta):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         df.open()
 
@@ -433,7 +437,7 @@ class TestDiskFile(unittest.TestCase):
 
     def test_get_metadata_when_diskfile_not_open(self):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
                           df.get_metadata)
@@ -442,7 +446,7 @@ class TestDiskFile(unittest.TestCase):
                 return_value={'name': 'o'})
     def test_read_metadata(self, mock_get_meta):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         metadata = df.read_metadata()
 
@@ -450,7 +454,7 @@ class TestDiskFile(unittest.TestCase):
 
     def test_reader(self):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         reader = df.reader()
         self.assertTrue(isinstance(reader, DiskFileReader))
@@ -459,7 +463,7 @@ class TestDiskFile(unittest.TestCase):
                 return_value=FakeHTTPConn())
     def test_create(self, mock_http):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         with df.create() as writer:
             self.assertTrue(isinstance(writer, DiskFileWriter))
@@ -467,7 +471,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.put_meta')
     def test_write_metadata(self, mock_put_meta):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         df.write_metadata({'k': 'v'})
 
@@ -476,7 +480,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.del_object')
     def test_delete(self, mock_del_object):
         sfs = SproxydFileSystem({}, mock.Mock())
-        df = DiskFile(sfs, 'a', 'c', 'o')
+        df = DiskFile(sfs, 'a', 'c', 'o', use_splice=False)
 
         df.delete("ignored")
 
