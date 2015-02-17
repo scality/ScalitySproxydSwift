@@ -74,28 +74,6 @@ class SproxydFileSystem(object):
 
         self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
 
-        self.use_splice = False
-
-        conf_wants_splice = swift.common.utils.config_true_value(
-            conf.get('splice', 'no'))
-
-        if HAS_NEW_SPLICE:
-            system_has_splice = swift.common.splice.splice.available
-        else:
-            try:
-                system_has_splice = swift.common.utils.system_has_splice()
-            except AttributeError:  # Old Swift versions
-                system_has_splice = False
-
-        if conf_wants_splice and not system_has_splice:
-            self.logger.warn(
-                "Use of splice() requested (config says \"splice = %s\"), "
-                "but the system does not support it. "
-                "splice() will not be used." % conf.get('splice'))
-
-        if conf_wants_splice and system_has_splice:
-            self.use_splice = True
-
         timeout = urllib3.Timeout(connect=self.conn_timeout,
                                   read=self.proxy_timeout)
         # One HTTP Connection pool per sproxyd host
@@ -272,11 +250,6 @@ class SproxydFileSystem(object):
 
         return self._do_http('get_object', handlers, 'GET', name, headers)
 
-    @utils.trace
-    def get_diskfile(self, account, container, obj, **kwargs):
-        """Get a diskfile."""
-        return DiskFile(self, account, container, obj)
-
 
 class DiskFileWriter(object):
     """A simple sproxyd pass-through
@@ -350,14 +323,16 @@ class DiskFileReader(object):
 
     :param filesystem: internal file system object to use
     :param name: object name
+    :param use_splice: if true, use zero-copy splice() to send data
     """
-    def __init__(self, filesystem, name):
+    def __init__(self, filesystem, name, use_splice):
         self._filesystem = filesystem
         self._name = name
+        self._use_splice = use_splice
 
     def __repr__(self):
-        ret = 'DiskFileReader(filesystem=%r, object_name=%r)'
-        return ret % (self._filesystem, self._name)
+        ret = 'DiskFileReader(filesystem=%r, object_name=%r, use_splice=%r)'
+        return ret % (self._filesystem, self._name, self._use_splice)
 
     logger = property(lambda self: self._filesystem.logger)
 
@@ -371,7 +346,7 @@ class DiskFileReader(object):
 
     @utils.trace
     def can_zero_copy_send(self):
-        return self._filesystem.use_splice
+        return self._use_splice
 
     @utils.trace
     def zero_copy_send(self, wsockfd):
@@ -444,9 +419,10 @@ class DiskFile(object):
     :param account: account name for the object
     :param container: container name for the object
     :param obj: object name for the object
+    :param use_splice: if true, use zero-copy splice() to send data
     """
 
-    def __init__(self, filesystem, account, container, obj):
+    def __init__(self, filesystem, account, container, obj, use_splice):
         self._name = '/'.join((account, container, obj))
         self._metadata = None
         self._filesystem = filesystem
@@ -454,13 +430,15 @@ class DiskFile(object):
         self._account = account
         self._container = container
         self._obj = obj
+        self._use_splice = use_splice
 
     logger = property(lambda self: self._filesystem.logger)
 
     def __repr__(self):
-        ret = 'DiskFile(filesystem=%r, account=%r, container=%r, obj=%r)'
+        ret = ('DiskFile(filesystem=%r, account=%r, container=%r, obj=%r, '
+               'use_splice=%r)')
         return ret % (self._filesystem, self._account, self._container,
-                      self._obj)
+                      self._obj, self._use_splice)
 
     @utils.trace
     def open(self):
@@ -511,7 +489,8 @@ class DiskFile(object):
         :param keep_cache: ignored. Kept for compatibility with the native
                           `DiskFile` class in Swift
         """
-        dr = DiskFileReader(self._filesystem, self._name)
+        dr = DiskFileReader(self._filesystem, self._name,
+                            use_splice=self._use_splice)
         return dr
 
     @utils.trace
@@ -540,3 +519,47 @@ class DiskFile(object):
                           called externally only by the `ObjectController`
         """
         self._filesystem.del_object(self._name)
+
+
+class DiskFileManager(object):
+    """
+    Management class for devices, providing common place for shared parameters
+    and methods not provided by the DiskFile class (which primarily services
+    the object server REST API layer).
+
+    The `get_diskfile()` method is how this implementation creates a `DiskFile`
+    object.
+    """
+
+    def __init__(self, conf, logger):
+        """
+        :param conf: caller provided configuration object
+        :param logger: caller provided logger
+        """
+        self.logger = logger
+
+        self.use_splice = False
+
+        conf_wants_splice = swift.common.utils.config_true_value(
+            conf.get('splice', 'no'))
+
+        if HAS_NEW_SPLICE:
+            system_has_splice = swift.common.splice.splice.available
+        else:
+            try:
+                system_has_splice = swift.common.utils.system_has_splice()
+            except AttributeError:  # Old Swift versions
+                system_has_splice = False
+
+        if conf_wants_splice and not system_has_splice:
+            self.logger.warn(
+                "Use of splice() requested (config says \"splice = %s\"), "
+                "but the system does not support it. "
+                "splice() will not be used." % conf.get('splice'))
+
+        if conf_wants_splice and system_has_splice:
+            self.use_splice = True
+
+    def get_diskfile(self, account, container, obj, **kwargs):
+        return DiskFile(self, account, container, obj,
+                        use_splice=self.use_splice, **kwargs)
