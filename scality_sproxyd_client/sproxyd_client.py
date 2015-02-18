@@ -21,11 +21,16 @@ import pickle
 import types
 import urllib
 
-from . import exceptions
-from . import http_utils
-from . import utils
+from scality_sproxyd_client import exceptions
+from scality_sproxyd_client import utils
 
 urllib3 = utils.get_urllib3()
+
+
+def drain_connection(response):
+    '''Read remaining data of the `Response` to 'clean' underlying socket.'''
+    while response.read(64 * 1024):
+        pass
 
 
 class SproxydClient(object):
@@ -108,7 +113,6 @@ class SproxydClient(object):
             self.conn_timeout, self.proxy_timeout, self.base_path,
             self.sproxyd_hosts_set)
 
-    @utils.trace
     def _do_http(self, caller_name, handlers, method, path, headers=None):
         '''Common code for handling a single HTTP request
 
@@ -151,7 +155,7 @@ class SproxydClient(object):
         # cleanup.
         if not isinstance(result, types.GeneratorType):
             try:
-                http_utils.drain_connection(response)
+                drain_connection(response)
                 response.release_conn()
             except Exception as exc:
                 self.logger.error("Unexpected exception while releasing an "
@@ -160,7 +164,6 @@ class SproxydClient(object):
 
         return result
 
-    @utils.trace
     def get_meta(self, name):
         """Open a connection and get usermd."""
 
@@ -179,7 +182,6 @@ class SproxydClient(object):
 
         return self._do_http('get_meta', handlers, 'HEAD', name)
 
-    @utils.trace
     def put_meta(self, name, metadata):
         """Connect to sproxyd and put usermd."""
         if metadata is None:
@@ -201,7 +203,6 @@ class SproxydClient(object):
 
         return result
 
-    @utils.trace
     def del_object(self, name):
         """Connect to sproxyd and delete object."""
 
@@ -215,7 +216,6 @@ class SproxydClient(object):
 
         return self._do_http('del_object', handlers, 'DELETE', name)
 
-    @utils.trace
     def get_object(self, name, headers=None):
         """Connect to sproxyd and get an object."""
 

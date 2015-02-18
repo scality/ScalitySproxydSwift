@@ -18,7 +18,7 @@
 import time
 import unittest
 
-from swift_scality_backend.afd import AccrualFailureDetector
+from scality_sproxyd_client.afd import AccrualFailureDetector
 
 
 class TestAFDBehaviorOnInit(unittest.TestCase):
