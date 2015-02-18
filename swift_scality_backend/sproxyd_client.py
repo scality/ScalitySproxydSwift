@@ -22,10 +22,15 @@ import types
 import urllib
 
 from . import exceptions
-from . import http_utils
 from . import utils
 
 urllib3 = utils.get_urllib3()
+
+
+def drain_connection(response):
+    '''Read remaining data of the `Response` to 'clean' underlying socket.'''
+    while response.read(64 * 1024):
+        pass
 
 
 class SproxydClient(object):
@@ -151,7 +156,7 @@ class SproxydClient(object):
         # cleanup.
         if not isinstance(result, types.GeneratorType):
             try:
-                http_utils.drain_connection(response)
+                drain_connection(response)
                 response.release_conn()
             except Exception as exc:
                 self.logger.error("Unexpected exception while releasing an "
