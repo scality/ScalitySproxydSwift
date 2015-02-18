@@ -95,10 +95,10 @@ class TestMonitoringLoop(unittest.TestCase):
         ping = mock.Mock(return_value=False)
 
         thread = eventlet.spawn(functools.partial(self.loop, ping))
-        eventlet.sleep(0.02)
+        eventlet.sleep(0.05)
         try:
-            # The loop ran for ~0.02 sec, each iteration of the loop should
-            # run in ~0.001 sec so there should be ~20 calls to `ping`.
+            # The loop ran for ~0.05 sec, each iteration of the loop should
+            # run in ~0.001 sec so there should be ~50 calls to `ping`.
             # We choose 5, just to be on the safe side
             self.assertTrue(ping.call_count >= 5)
             self.assertEqual(1, self.on_down.call_count)
