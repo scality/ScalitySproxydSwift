@@ -64,7 +64,7 @@ class AccrualFailureDetector(object):
         ts = time.time()
         diff = ts - self._timestamp
         prob = self._probability(diff)
-        if (decimal.Decimal(str(prob)).is_zero()):
+        if decimal.Decimal(str(prob)).is_zero():
             prob = 1E-128  # a very small number, avoiding ValueError: math domain error
         return -1 * math.log10(prob)
 
