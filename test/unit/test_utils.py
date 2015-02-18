@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-'''Tests for `swift_scality_backend.utils`'''
+'''Tests for `scality_sproxyd_client.utils`'''
 
 import functools
 import itertools
@@ -23,8 +23,8 @@ import unittest
 import eventlet
 import mock
 
-from swift_scality_backend import exceptions
-from swift_scality_backend import utils
+from scality_sproxyd_client import exceptions
+from scality_sproxyd_client import utils
 
 
 class TestIsSproxydConfValid(unittest.TestCase):

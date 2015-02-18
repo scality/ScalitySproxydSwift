@@ -28,14 +28,14 @@ import mock
 import urllib3
 import urllib3.exceptions
 
-from swift_scality_backend.sproxyd_client import SproxydClient
-from swift_scality_backend.exceptions import SproxydConfException, \
+from scality_sproxyd_client.sproxyd_client import SproxydClient
+from scality_sproxyd_client.exceptions import SproxydConfException, \
     SproxydHTTPException
 from . import utils
 
 
 class TestSproxydClient(unittest.TestCase):
-    """Tests for swift_scality_backend.sproxyd_client.SproxydClient"""
+    """Tests for scality_sproxyd_client.sproxyd_client.SproxydClient"""
 
     def test_init_with_default_timeout_values(self):
         sfs = SproxydClient({}, mock.Mock())

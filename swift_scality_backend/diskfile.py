@@ -33,7 +33,7 @@ try:
 except ImportError:
     HAS_NEW_SPLICE = False
 
-from swift_scality_backend.exceptions import SproxydHTTPException
+from scality_sproxyd_client.exceptions import SproxydHTTPException
 import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils

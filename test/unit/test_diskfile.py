@@ -30,8 +30,8 @@ import urllib3.exceptions
 
 from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
-from swift_scality_backend.exceptions import SproxydHTTPException
-from swift_scality_backend.sproxyd_client import SproxydClient
+from scality_sproxyd_client.exceptions import SproxydHTTPException
+from scality_sproxyd_client.sproxyd_client import SproxydClient
 from . import utils
 
 
@@ -167,7 +167,7 @@ class TestDiskFileWriter(unittest.TestCase):
 
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
                 return_value=FakeHTTPConn(200))
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.put_meta')
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_put_with_200_response(self, mock_put_meta, mock_http):
         sproxyd_client = SproxydClient({}, mock.Mock())
         dfw = DiskFileWriter(sproxyd_client, 'obj')
@@ -180,7 +180,7 @@ class TestDiskFileWriter(unittest.TestCase):
 class TestDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFile"""
 
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.get_meta',
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
         sproxyd_client = SproxydClient({}, mock.Mock())
@@ -189,7 +189,7 @@ class TestDiskFile(unittest.TestCase):
         self.assertRaises(swift.common.exceptions.DiskFileDeleted, df.open)
         mock_get_meta.assert_called_once_with('a/c/o')
 
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.get_meta',
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_open(self, mock_get_meta):
         sproxyd_client = SproxydClient({}, mock.Mock())
@@ -206,7 +206,7 @@ class TestDiskFile(unittest.TestCase):
         self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
                           df.get_metadata)
 
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.get_meta',
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_read_metadata(self, mock_get_meta):
         sproxyd_client = SproxydClient({}, mock.Mock())
@@ -232,7 +232,7 @@ class TestDiskFile(unittest.TestCase):
         with df.create() as writer:
             self.assertTrue(isinstance(writer, DiskFileWriter))
 
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.put_meta')
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_write_metadata(self, mock_put_meta):
         sproxyd_client = SproxydClient({}, mock.Mock())
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
@@ -241,7 +241,7 @@ class TestDiskFile(unittest.TestCase):
 
         mock_put_meta.assert_called_once_with('a/c/o', {'k': 'v'})
 
-    @mock.patch('swift_scality_backend.sproxyd_client.SproxydClient.del_object')
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.del_object')
     def test_delete(self, mock_del_object):
         sproxyd_client = SproxydClient({}, mock.Mock())
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)

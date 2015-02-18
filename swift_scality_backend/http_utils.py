@@ -18,7 +18,7 @@
 import httplib
 import socket
 
-from swift_scality_backend.exceptions import InvariantViolation
+from scality_sproxyd_client.exceptions import InvariantViolation
 
 
 class SomewhatBufferedFileObject(socket._fileobject):
@@ -108,4 +108,3 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
 
     def __exit__(self, *exc_info):
         self.close()
-

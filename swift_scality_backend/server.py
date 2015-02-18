@@ -27,7 +27,7 @@ from swift import gettext_ as _
 import swift.obj.server
 
 import swift_scality_backend.diskfile
-from .sproxyd_client import SproxydClient
+import scality_sproxyd_client.sproxyd_client
 
 POLICY_IDX_STUB = object()
 
@@ -40,7 +40,7 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
-        self._filesystem = SproxydClient(conf, self.logger)
+        self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(conf, self.logger)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
