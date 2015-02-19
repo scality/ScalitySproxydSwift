@@ -18,7 +18,6 @@ import distutils.spawn
 import setuptools
 import subprocess
 
-import scality_sproxyd_client
 import swift_scality_backend
 
 
@@ -70,12 +69,12 @@ setuptools.setup(
     author='Scality Openstack Engineering Team',
     author_email='openstack-eng@scality.com',
     license='Apache License (2.0)',
-    packages=['swift_scality_backend', 'scality_sproxyd_client'],
+    packages=['swift_scality_backend'],
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 2.7'],
-    install_requires=swift_scality_backend.__requires__ + scality_sproxyd_client.__requires__,
+    install_requires=swift_scality_backend.__requires__,
     entry_points={
         'paste.app_factory': [
             'sproxyd_object=swift_scality_backend.server:app_factory'],

@@ -27,7 +27,8 @@ from swift import gettext_ as _
 import swift.obj.server
 
 import swift_scality_backend.diskfile
-import scality_sproxyd_client.sproxyd_client
+import swift_scality_backend.utils
+from scality_sproxyd_client.sproxyd_client import SproxydClient
 
 POLICY_IDX_STUB = object()
 
@@ -40,7 +41,17 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
-        self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(conf, self.logger)
+
+        # TODO(jordanP) to be changed when we make clear in the Readme we expect
+        # a comma separated list of full sproxyd endpoints.
+        sproxyd_path = conf.get('sproxyd_path', '/proxy/chord').strip('/')
+        sproxyd_urls = ['http://%s/%s/' % (h, sproxyd_path) for h in
+                        swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
+
+        self._filesystem = SproxydClient(sproxyd_urls,
+                                         conf.get('sproxyd_conn_timeout'),
+                                         conf.get('sproxyd_proxy_timeout'),
+                                         self.logger)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
