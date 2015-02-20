@@ -348,6 +348,6 @@ class DiskFileManager(object):
         if conf_wants_splice and system_has_splice:
             self.use_splice = True
 
-    def get_diskfile(self, account, container, obj, **kwargs):
-        return DiskFile(self, account, container, obj,
-                        use_splice=self.use_splice, **kwargs)
+    def get_diskfile(self, sproxyd_client, account, container, obj):
+        return DiskFile(sproxyd_client, account, container, obj,
+                        use_splice=self.use_splice)

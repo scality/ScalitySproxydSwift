@@ -137,8 +137,11 @@ class TestDiskFileManager(unittest.TestCase):
         self._test_init_splice_unavailable()
 
     def test_get_diskfile(self):
+        sproxyd_client = SproxydClient({}, mock.Mock())
         dfm = DiskFileManager({}, mock.Mock())
-        self.assertTrue(isinstance(dfm.get_diskfile('a', 'c', 'o'), DiskFile))
+
+        diskfile = dfm.get_diskfile(sproxyd_client, 'a', 'c', 'o')
+        self.assertTrue(isinstance(diskfile, DiskFile))
 
 
 class TestDiskFileWriter(unittest.TestCase):
