@@ -50,7 +50,7 @@ class ObjectController(swift.obj.server.ObjectController):
         given REST API.
         """
         return self._diskfile_mgr.get_diskfile(
-            self._filesystem, account, container, obj, **kwargs)
+            self._filesystem, account, container, obj)
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,

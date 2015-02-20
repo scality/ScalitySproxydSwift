@@ -19,6 +19,7 @@ import inspect
 
 import swift.obj.server
 
+import swift_scality_backend.diskfile
 import swift_scality_backend.server
 
 
@@ -78,3 +79,13 @@ def test_api_compatible():
             continue
 
         yield check_api_compatible, name
+
+
+def test_get_diskfile():
+    scality_server = swift_scality_backend.server.app_factory({})
+    diskfile = scality_server.get_diskfile('dev', 'partition', 'a', 'c', 'o')
+
+    assert isinstance(diskfile, swift_scality_backend.diskfile.DiskFile)
+    assert diskfile._account == 'a'
+    assert diskfile._container == 'c'
+    assert diskfile._obj == 'o'
