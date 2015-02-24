@@ -1,11 +1,5 @@
 #!/bin/bash -xue
 
-function get_release_number {
-    local release_string=`lsb_release -r -s`
-    local release_number=${release_string:0:2}
-    echo $release_number
-}
-
 function common {
     git clone -b ${DEVSTACK_BRANCH} https://github.com/openstack-dev/devstack.git
     cp devstack/samples/local.conf devstack/local.conf
@@ -33,10 +27,9 @@ function ubuntu12_specifics {
 }
 
 function main {
-    release_number=$(get_release_number)
-    if [ "$release_number" -eq "12" ]; then
+    if [[ "$(lsb_release -c -s)" == "precise" ]]; then
         ubuntu12_specifics
-    elif [ "$release_number" -eq "14" ]; then
+    elif [[ "$(lsb_release -c -s)" == "trusty" ]]; then
         ubuntu14_specifics
     fi
     common

@@ -4,12 +4,12 @@ function install_sproxyd_driver {
     sudo python setup.py install
 }
 
-# Shamless ripoff of devstack/lib/swift
+# Shameless ripoff of devstack/lib/swift
 function enable_sproxyd_driver {
     for node_number in ${SWIFT_REPLICAS_SEQ}; do
         local swift_node_config=${SWIFT_CONF_DIR}/object-server/${node_number}.conf
         iniset ${swift_node_config} app:object-server use egg:swift_scality_backend#sproxyd_object
-        # Host and port need to be confiurable
+        # Host and port need to be configurable
         iniset ${swift_node_config} app:object-server sproxyd_host localhost:81
         # /proxy_path need to be configurable
         iniset ${swift_node_config} app:object-server sproxyd_path /proxy/chord_path
