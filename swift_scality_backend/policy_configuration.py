@@ -17,6 +17,7 @@
 Structures and procedures to handle Swift storage policy configuration files.
 '''
 
+import ConfigParser
 import operator
 import urlparse
 
@@ -210,8 +211,8 @@ class Ring(object):  # pylint: disable=R0903
 
     Furthermore, a `Ring` is iterable (over its endpoints).
 
-        >>> for endpoint in sorted(r):
-        ...     print endpoint.netloc
+        >>> for endpoint in sorted(e.netloc for e in r):
+        ...     print endpoint
         localhost
         otherhost
         >>> 'http://localhost' in r
@@ -347,6 +348,20 @@ class StoragePolicy(object):  # pylint: disable=R0903
         return hash((self.index, self.read_set, self.write_set))
 
 
+RING_SECTION_PREFIX = 'ring:'
+STORAGE_POLICY_SECTION_PREFIX = 'storage-policy:'
+
+RING_LOCATION_OPTION = 'location'
+RING_SPROXYD_ENDPOINTS_OPTION = 'sproxyd_endpoints'
+
+STORAGE_POLICY_READ_OPTION = 'read'
+STORAGE_POLICY_WRITE_OPTION = 'write'
+
+
+class ConfigurationError(Exception):
+    '''Exception thrown when a configuration is somehow invalid.'''
+
+
 class Configuration(object):
     '''Representation of a storage-policy configuration
 
@@ -429,3 +444,128 @@ class Configuration(object):
             return self._policies_map[index]
         else:
             raise ValueError('Unknown policy index: %r' % index)
+
+    @classmethod
+    def from_stream(cls, stream, filename=None):
+        '''Parse a configuration from a stream
+
+        This functions turns a configuration file into a `Configuration`, with
+        some sanity checks along the way. It is based on
+        `ConfigParser.SafeConfigParser`.
+
+        The `stream` object must have a `readline` method. `filename` will be
+        used in error reporting, if available.
+
+        :param stream: Stream to parse
+        :type stream: File-like object
+        :param filename: Filename of input
+        :type filename: `str`
+
+        :returns: Parsed `Configuration`
+        :rtype: `Configuration`
+
+        :raise ConfigurationError: Various configurations issues detected
+        '''
+
+        parser = ConfigParser.SafeConfigParser()
+        parser.readfp(stream, filename)
+
+        ring_sections = [
+            section for section in parser.sections()
+            if section.startswith(RING_SECTION_PREFIX)]
+        sp_sections = [
+            section for section in parser.sections()
+            if section.startswith(STORAGE_POLICY_SECTION_PREFIX)]
+
+        _default = object()
+
+        def get(section, setting, default=_default):
+            '''Safely retrieve a value from a configuration.'''
+
+            if not parser.has_option(section, setting):
+                if default is not _default:
+                    return default
+                else:
+                    raise ConfigurationError(
+                        'Section %r lacks a %r setting' % (section, setting))
+
+            return parser.get(section, setting)
+
+        def split_list(val):
+            '''Split a comma-separated string into a list of strings.'''
+
+            return (s2 for s2 in
+                    (s1.strip() for s1 in val.split(','))
+                    if s2)
+
+        rings = {}
+        for section in ring_sections:
+            name = section[len(RING_SECTION_PREFIX):]
+            if not name:
+                raise ConfigurationError('Invalid section name %r' % section)
+
+            location = get(section, RING_LOCATION_OPTION)
+            if not location:
+                raise ConfigurationError(
+                    'Invalid %r setting in %r' %
+                    (RING_LOCATION_OPTION, section))
+
+            endpoints = get(section, RING_SPROXYD_ENDPOINTS_OPTION)
+
+            endpoints2 = set()
+            for endpoint in split_list(endpoints):
+                try:
+                    endpoints2.add(Endpoint(endpoint))
+                except ValueError as exc:
+                    raise ConfigurationError(
+                        'Error parsing endpoint %r in %r: %s' %
+                        (endpoint, section, exc.message))
+
+            if not endpoints2:
+                raise ConfigurationError(
+                    'Invalid %r setting in %r' %
+                    (RING_SPROXYD_ENDPOINTS_OPTION, section))
+
+            rings[name] = Ring(name, location, endpoints2)
+
+        policies = list()
+        for section in sp_sections:
+            index = section[len(STORAGE_POLICY_SECTION_PREFIX):]
+            if not index:
+                raise ConfigurationError('Invalid section name %r' % section)
+
+            try:
+                index2 = int(index)
+            except (ValueError, TypeError):
+                raise ConfigurationError('Invalid policy index: %r' % index)
+
+            read = get(section, STORAGE_POLICY_READ_OPTION, '')
+            write = get(section, STORAGE_POLICY_WRITE_OPTION)
+
+            read2 = set()
+            for ring in split_list(read):
+                if ring not in rings:
+                    raise ConfigurationError(
+                        'Unknown %r ring %r in policy %r' %
+                        (STORAGE_POLICY_READ_OPTION, ring, index2))
+
+                read2.add(rings[ring])
+
+            write2 = list(split_list(write))
+
+            if len(write2) > 1:
+                raise ConfigurationError('Multiple %r rings defined in %r' %
+                                         (STORAGE_POLICY_WRITE_OPTION, section))
+
+            write3 = set()
+            for ring in write2:
+                if ring not in rings:
+                    raise ConfigurationError(
+                        'Unknown %r ring %r in policy %r' %
+                        (STORAGE_POLICY_WRITE_OPTION, ring, index2))
+
+                write3.add(rings[ring])
+
+            policies.append(StoragePolicy(index2, read2, write3))
+
+        return cls(policies)

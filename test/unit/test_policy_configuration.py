@@ -16,6 +16,10 @@
 '''Tests for `swift_scality_backend.policy_configuration`.'''
 
 import unittest
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 import utils
 
@@ -225,3 +229,73 @@ class TestConfiguration(unittest.TestCase):
         self.assertEqual(
             hash(Configuration([p])),
             hash(Configuration([p])))
+
+    def test_from_stream(self):
+        s = StringIO('\n'.join(line.lstrip() for line in '''
+                [ring:paris-rep3]
+                location = paris
+                sproxyd_endpoints = http://paris1.int/rep3, http://paris2.int/rep3
+
+                [ring:paris-arc6+3]
+                location = paris
+                sproxyd_endpoints = http://paris1.int/arc6+3, http://paris2.int/arc6+3
+
+                [ring:sfo-arc6+3]
+                location = sfo
+                sproxyd_endpoints = http://sfo1.int/arc6+3
+
+                [ring:nyc-arc6+3]
+                location = nyc
+                sproxyd_endpoints = http://nyc1.int/arc6+3
+
+                [storage-policy:1]
+                read = sfo-arc6+3
+                write = paris-arc6+3
+
+                [storage-policy:2]
+                read = nyc-arc6+3
+                write = paris-arc6+3
+
+                [storage-policy:3]
+                read =
+                write = paris-rep3
+            '''.splitlines()))
+
+        conf = Configuration.from_stream(s)
+
+        p1 = conf.get_policy(1)
+
+        self.assertEqual(p1.index, 1)
+
+        self.assertEqual(
+            list(p1.read_set),
+            [Ring('sfo-arc6+3', 'sfo', ['http://sfo1.int/arc6+3'])])
+
+        self.assertEqual(
+            list(p1.write_set),
+            [Ring(
+                'paris-arc6+3', 'paris',
+                ['http://paris1.int/arc6+3', 'http://paris2.int/arc6+3'])])
+
+        p2 = conf.get_policy(2)
+        self.assertEqual(
+            p2,
+            StoragePolicy(
+                2,
+                [Ring('nyc-arc6+3', 'nyc', ['http://nyc1.int/arc6+3'])],
+                [Ring(
+                    'paris-arc6+3', 'paris',
+                    ['http://paris1.int/arc6+3', 'http://paris2.int/arc6+3'])]))
+
+        p3 = conf.get_policy(3)
+        self.assertEqual(
+            p3,
+            StoragePolicy(
+                3,
+                [],
+                [Ring(
+                    'paris-rep3', 'paris',
+                    ['http://paris1.int/rep3', 'http://paris2.int/rep3'])]))
+
+        self.assertRaises(ValueError, conf.get_policy, 4)
+        self.assertRaises(ValueError, conf.get_policy, 'test')
