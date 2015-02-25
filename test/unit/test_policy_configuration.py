@@ -199,6 +199,36 @@ class TestStoragePolicy(unittest.TestCase):
 
 
 class TestConfiguration(unittest.TestCase):
+    TEST_CONFIGURATION = '\n'.join(line.lstrip() for line in '''
+        [ring:paris-rep3]
+        location = paris
+        sproxyd_endpoints = http://paris1.int/rep3, http://paris2.int/rep3
+
+        [ring:paris-arc6+3]
+        location = paris
+        sproxyd_endpoints = http://paris1.int/arc6+3, http://paris2.int/arc6+3
+
+        [ring:sfo-arc6+3]
+        location = sfo
+        sproxyd_endpoints = http://sfo1.int/arc6+3
+
+        [ring:nyc-arc6+3]
+        location = nyc
+        sproxyd_endpoints = http://nyc1.int/arc6+3
+
+        [storage-policy:1]
+        read = sfo-arc6+3
+        write = paris-arc6+3
+
+        [storage-policy:2]
+        read = nyc-arc6+3
+        write = paris-arc6+3
+
+        [storage-policy:3]
+        read =
+        write = paris-rep3
+        '''.splitlines())
+
     def test_duplicate_index(self):
         p1 = StoragePolicy(1, [], [])
         p2 = StoragePolicy(2, [], [])
@@ -231,46 +261,13 @@ class TestConfiguration(unittest.TestCase):
             hash(Configuration([p])))
 
     def test_from_stream(self):
-        s = StringIO('\n'.join(line.lstrip() for line in '''
-                [ring:paris-rep3]
-                location = paris
-                sproxyd_endpoints = http://paris1.int/rep3, http://paris2.int/rep3
-
-                [ring:paris-arc6+3]
-                location = paris
-                sproxyd_endpoints = http://paris1.int/arc6+3, http://paris2.int/arc6+3
-
-                [ring:sfo-arc6+3]
-                location = sfo
-                sproxyd_endpoints = http://sfo1.int/arc6+3
-
-                [ring:nyc-arc6+3]
-                location = nyc
-                sproxyd_endpoints = http://nyc1.int/arc6+3
-
-                [storage-policy:1]
-                read = sfo-arc6+3
-                write = paris-arc6+3
-
-                [storage-policy:2]
-                read = nyc-arc6+3
-                write = paris-arc6+3
-
-                [storage-policy:3]
-                read =
-                write = paris-rep3
-            '''.splitlines()))
-
-        conf = Configuration.from_stream(s)
+        conf = Configuration.from_stream(StringIO(self.TEST_CONFIGURATION))
 
         p1 = conf.get_policy(1)
-
         self.assertEqual(p1.index, 1)
-
         self.assertEqual(
             list(p1.read_set),
             [Ring('sfo-arc6+3', 'sfo', ['http://sfo1.int/arc6+3'])])
-
         self.assertEqual(
             list(p1.write_set),
             [Ring(
@@ -299,3 +296,13 @@ class TestConfiguration(unittest.TestCase):
 
         self.assertRaises(ValueError, conf.get_policy, 4)
         self.assertRaises(ValueError, conf.get_policy, 'test')
+
+    def test_to_stream(self):
+        conf = Configuration.from_stream(StringIO(self.TEST_CONFIGURATION))
+
+        out = StringIO()
+        conf.to_stream(out)
+
+        conf2 = Configuration.from_stream(StringIO(out.getvalue()))
+
+        self.assertEqual(conf, conf2)

@@ -569,3 +569,44 @@ class Configuration(object):
             policies.append(StoragePolicy(index2, read2, write3))
 
         return cls(policies)
+
+    def to_stream(self, stream):
+        '''Unparse a `Configuration` into a stream
+
+        :param stream: Stream to write the `Configuration` to, in INI-format
+        :type stream: File-like object
+        '''
+
+        rings = set()
+
+        for policy in self:
+            for ring in policy.read_set:
+                rings.add(ring)
+
+            for ring in policy.write_set:
+                rings.add(ring)
+
+        parser = ConfigParser.SafeConfigParser()
+
+        for ring in rings:
+            section_name = RING_SECTION_PREFIX + ring.name
+            parser.add_section(section_name)
+
+            parser.set(section_name, RING_LOCATION_OPTION, ring.location.name)
+            parser.set(
+                section_name, RING_SPROXYD_ENDPOINTS_OPTION,
+                ', '.join(str(endpoint) for endpoint in ring.endpoints))
+
+        for policy in self:
+            section_name = '%s%r' % \
+                (STORAGE_POLICY_SECTION_PREFIX, policy.index)
+            parser.add_section(section_name)
+
+            parser.set(
+                section_name, STORAGE_POLICY_READ_OPTION,
+                ', '.join(ring.name for ring in policy.read_set))
+            parser.set(
+                section_name, STORAGE_POLICY_WRITE_OPTION,
+                ', '.join(ring.name for ring in policy.write_set))
+
+        parser.write(stream)
