@@ -79,3 +79,11 @@ def trace(f):
             return result
 
     return wrapped
+
+
+def split_list(val):
+    '''Split a comma-separated string into a list of strings.'''
+
+    return (s2 for s2 in
+            (s1.strip() for s1 in val.split(','))
+            if s2)
