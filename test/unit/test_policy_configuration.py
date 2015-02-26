@@ -24,6 +24,7 @@ except ImportError:
 import utils
 
 from swift_scality_backend.policy_configuration import Configuration
+from swift_scality_backend.policy_configuration import ConfigurationError
 from swift_scality_backend.policy_configuration import Endpoint
 from swift_scality_backend.policy_configuration import Location
 from swift_scality_backend.policy_configuration import Ring
@@ -306,3 +307,173 @@ class TestConfiguration(unittest.TestCase):
         conf2 = Configuration.from_stream(StringIO(out.getvalue()))
 
         self.assertEqual(conf, conf2)
+
+    @staticmethod
+    def _format_config(conf):
+        return StringIO(
+            '\n'.join(
+                line.lstrip() for line in conf.splitlines()))
+
+    def test_missing_ring_name(self):
+        conf = self._format_config('''
+            [ring:]
+            location = test
+            sproxyd_endpoints = http://localhost
+            ''')
+
+        self.assertRaisesRegexp(
+            ConfigurationError,
+            'Invalid section name \'ring:\'',
+            Configuration.from_stream, conf)
+
+    def test_missing_ring_location(self):
+        conf = self._format_config('''
+            [ring:test]
+            sproxyd_endpoints = http://localhost
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            '''Section 'ring:test' lacks a 'location' setting''',
+            Configuration.from_stream, conf)
+
+    def test_empty_ring_location(self):
+        conf = self._format_config('''
+            [ring:test]
+            location =
+            sproxyd_endpoints = http://localhost
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Invalid \'location\' setting in \'ring:test\'',
+            Configuration.from_stream, conf)
+
+    def test_empty_ring_sproxyd_endpoints(self):
+        conf = self._format_config('''
+            [ring:test]
+            location = test
+            sproxyd_endpoints =
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Invalid \'sproxyd_endpoints\' setting in \'ring:test\'',
+            Configuration.from_stream, conf)
+
+    def test_missing_ring_sproxyd_endpoints(self):
+        conf = self._format_config('''
+            [ring:test]
+            location = paris
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            '''Section 'ring:test' lacks a 'sproxyd_endpoints' setting''',
+            Configuration.from_stream, conf)
+
+    def test_invalid_ring_sproxyd_endpoint(self):
+        conf = self._format_config('''
+            [ring:test]
+            location = paris
+            sproxyd_endpoints = http://localhost, http://otherhost/?a=b
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Error parsing endpoint \'http://otherhost/\?a=b\' in '
+            '\'ring:test\': Endpoint URL can\'t have query values',
+            Configuration.from_stream, conf)
+
+    def test_non_int_storage_policy_index(self):
+        conf = self._format_config('''
+            [storage-policy:test]
+            read =
+            write = test
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Invalid policy index: \'test\'',
+            Configuration.from_stream, conf)
+
+    def test_empty_storage_policy_index(self):
+        conf = self._format_config('''
+            [storage-policy:]
+            read =
+            write = test
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Invalid section name \'storage-policy:\'',
+            Configuration.from_stream, conf)
+
+    def test_unknown_write_ring_in_storage_policy(self):
+        conf = self._format_config('''
+            [ring:test1]
+            location = paris
+            sproxyd_endpoints = http://localhost
+
+            [storage-policy:1]
+            read =
+            write = test2
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Unknown \'write\' ring \'test2\' in policy 1',
+            Configuration.from_stream, conf)
+
+    def test_unknown_read_ring_in_storage_policy(self):
+        conf = self._format_config('''
+            [ring:test1]
+            location = paris
+            sproxyd_endpoints = http://localhost
+
+            [storage-policy:1]
+            read = test2
+            write = test1
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Unknown \'read\' ring \'test2\' in policy 1',
+            Configuration.from_stream, conf)
+
+    def test_multiple_write_rings_in_storage_policy(self):
+        conf = self._format_config('''
+            [ring:test1]
+            location = paris
+            sproxyd_endpoints = http://paris
+
+            [ring:test2]
+            location = london
+            sproxyd_endpoints = http://london
+
+            [storage-policy:1]
+            read =
+            write = test1, test2
+            ''')
+
+        utils.assertRaisesRegexp(
+            ConfigurationError,
+            'Multiple \'write\' rings defined in \'storage-policy:1\'',
+            Configuration.from_stream, conf)
+
+    def test_missing_read_in_storage_policy(self):
+        conf = self._format_config('''
+            [ring:test1]
+            location = paris
+            sproxyd_endpoints = http://localhost
+
+            [storage-policy:1]
+            write = test1
+            ''')
+
+        conf = Configuration.from_stream(conf)
+
+        read_set = conf.get_policy(1).read_set
+        if len(read_set) != 0:
+            raise self.failureException(
+                '%r is not empty' % read_set)
