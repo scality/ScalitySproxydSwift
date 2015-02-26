@@ -21,6 +21,8 @@ import ConfigParser
 import operator
 import urlparse
 
+from swift_scality_backend import utils
+
 
 class Endpoint(object):  # pylint: disable=R0903
     '''Representation of an Sproxyd endpoint URL
@@ -491,13 +493,6 @@ class Configuration(object):
 
             return parser.get(section, setting)
 
-        def split_list(val):
-            '''Split a comma-separated string into a list of strings.'''
-
-            return (s2 for s2 in
-                    (s1.strip() for s1 in val.split(','))
-                    if s2)
-
         rings = {}
         for section in ring_sections:
             name = section[len(RING_SECTION_PREFIX):]
@@ -513,7 +508,7 @@ class Configuration(object):
             endpoints = get(section, RING_SPROXYD_ENDPOINTS_OPTION)
 
             endpoints2 = set()
-            for endpoint in split_list(endpoints):
+            for endpoint in utils.split_list(endpoints):
                 try:
                     endpoints2.add(Endpoint(endpoint))
                 except ValueError as exc:
@@ -543,7 +538,7 @@ class Configuration(object):
             write = get(section, STORAGE_POLICY_WRITE_OPTION)
 
             read2 = set()
-            for ring in split_list(read):
+            for ring in utils.split_list(read):
                 if ring not in rings:
                     raise ConfigurationError(
                         'Unknown %r ring %r in policy %r' %
@@ -551,7 +546,7 @@ class Configuration(object):
 
                 read2.add(rings[ring])
 
-            write2 = list(split_list(write))
+            write2 = list(utils.split_list(write))
 
             if len(write2) > 1:
                 raise ConfigurationError('Multiple %r rings defined in %r' %

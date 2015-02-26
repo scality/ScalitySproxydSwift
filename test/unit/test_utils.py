@@ -26,6 +26,8 @@ import mock
 from scality_sproxyd_client import exceptions
 from scality_sproxyd_client import utils
 
+from swift_scality_backend.utils import split_list
+
 
 class TestIsSproxydConfValid(unittest.TestCase):
 
@@ -144,3 +146,30 @@ def test_get_urllib3():
     urllib3 = utils.get_urllib3()
     assert isinstance(urllib3, types.ModuleType)
     assert urllib3.__version__ in utils.REQUIRES['urllib3']
+
+
+class TestSplitList(unittest.TestCase):
+    def test_empty_string(self):
+        self.assertEqual(
+            [],
+            list(split_list('')))
+
+    def test_basic(self):
+        self.assertEqual(
+            ['1', '2', '3'],
+            list(split_list('1, 2, 3')))
+
+    def test_space_prefix(self):
+        self.assertEqual(
+            ['1', '2'],
+            list(split_list('   1, 2')))
+
+    def test_space_suffix(self):
+        self.assertEqual(
+            ['1', '2'],
+            list(split_list('1, 2   ')))
+
+    def test_words(self):
+        self.assertEqual(
+            ['one', 'two', 'three'],
+            list(split_list(' one, two, three ')))
