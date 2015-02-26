@@ -198,6 +198,91 @@ class TestStoragePolicy(unittest.TestCase):
             hash(StoragePolicy(1, [], [])),
             hash(StoragePolicy(2, [], [])))
 
+    LOOKUP_TEST_POLICY = StoragePolicy(
+        index=1,
+        read_set=[
+            Ring(
+                name='sfo-arc6+3',
+                location=Location(name='sfo'),
+                endpoints=[
+                    Endpoint(url='http://sfo1.int/arc6+3')])],
+        write_set=[
+            Ring(
+                name='paris-arc6+3',
+                location=Location(name='paris'),
+                endpoints=[
+                    Endpoint(url='http://paris1.int/arc6+3'),
+                    Endpoint(url='http://paris2.int/arc6+3')])])
+
+    def test_lookup_method_invalid(self):
+        self.assertRaises(ValueError, StoragePolicy(1, [], []).lookup, 'test')
+
+    def test_lookup_method_read_without_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.READ),
+            [frozenset([
+                Endpoint('http://sfo1.int/arc6+3'),
+                Endpoint('http://paris1.int/arc6+3'),
+                Endpoint('http://paris2.int/arc6+3')])])
+
+    def test_lookup_method_write_without_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.WRITE),
+            [frozenset([
+                Endpoint('http://paris1.int/arc6+3'),
+                Endpoint('http://paris2.int/arc6+3')])])
+
+    def test_lookup_method_read_with_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.READ, ['paris']),
+            [
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3')]),
+                frozenset([
+                    Endpoint('http://sfo1.int/arc6+3')])])
+
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.READ, [Location('sfo')]),
+            [
+                frozenset([
+                    Endpoint('http://sfo1.int/arc6+3')]),
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3')])])
+
+    def test_lookup_method_write_with_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.WRITE, ['paris']),
+            [
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3')])])
+
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.WRITE, ['sfo']),
+            [
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3')])])
+
+    def test_lookup_method_read_with_unknown_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.READ, ['nyc']),
+            [
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3'),
+                    Endpoint('http://sfo1.int/arc6+3')])])
+
+    def test_lookup_method_write_with_unknown_location(self):
+        self.assertEqual(
+            self.LOOKUP_TEST_POLICY.lookup(StoragePolicy.WRITE, ['nyc']),
+            [
+                frozenset([
+                    Endpoint('http://paris1.int/arc6+3'),
+                    Endpoint('http://paris2.int/arc6+3')])])
+
 
 class TestConfiguration(unittest.TestCase):
     TEST_CONFIGURATION = '\n'.join(line.lstrip() for line in '''

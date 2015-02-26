@@ -303,6 +303,9 @@ class StoragePolicy(object):  # pylint: disable=R0903
         frozenset([Ring(name='london-arc6+3', location=..., endpoints=...)])
     '''
 
+    READ = 'read'
+    WRITE = 'write'
+
     __slots__ = '_index', '_read_set', '_write_set',
 
     def __init__(self, index, read_set, write_set):
@@ -348,6 +351,98 @@ class StoragePolicy(object):  # pylint: disable=R0903
 
     def __hash__(self):
         return hash((self.index, self.read_set, self.write_set))
+
+    def lookup(self, method, location_hints=None):
+        '''Lookup endpoints for a given method
+
+        This method calculates an (ordered) list of sets of `Endpoint`s that can
+        be used to perform a certain type of action, based on an optional list
+        of location preferences.
+
+        A simple example::
+
+            >>> sp = StoragePolicy(
+            ...     index=1,
+            ...     read_set=[
+            ...         Ring(
+            ...             name='sfo-arc6+3',
+            ...             location='sfo',
+            ...             endpoints=[
+            ...                 'http://sfo1.int/arc6+3']),
+            ...         Ring(
+            ...             name='nyc-arc6+3',
+            ...             location='nyc',
+            ...             endpoints=[
+            ...                 'http://nyc1.int/arc6+3',
+            ...                 'http://nyc2.int/arc6+3'])],
+            ...     write_set=[
+            ...         Ring(
+            ...             name='paris-arc6+3',
+            ...             location='paris',
+            ...             endpoints=[
+            ...                 'http://paris1.int/arc6+3',
+            ...                 'http://paris2.int/arc6+3'])])
+
+            >>> def dump(result):
+            ...     for (idx, endpoints) in enumerate(result):
+            ...         print idx, sorted(str(ep) for ep in endpoints)
+
+            >>> dump(sp.lookup(StoragePolicy.READ))
+            0 ['http://nyc1.int/arc6+3', 'http://nyc2.int/arc6+3', 'http://paris1.int/arc6+3', 'http://paris2.int/arc6+3', 'http://sfo1.int/arc6+3']
+
+            >>> dump(sp.lookup(StoragePolicy.WRITE))
+            0 ['http://paris1.int/arc6+3', 'http://paris2.int/arc6+3']
+
+            >>> dump(sp.lookup(StoragePolicy.READ, ['sfo']))
+            0 ['http://sfo1.int/arc6+3']
+            1 ['http://nyc1.int/arc6+3', 'http://nyc2.int/arc6+3', 'http://paris1.int/arc6+3', 'http://paris2.int/arc6+3']
+
+            >>> dump(sp.lookup(StoragePolicy.READ, ['sfo', 'paris']))
+            0 ['http://sfo1.int/arc6+3']
+            1 ['http://paris1.int/arc6+3', 'http://paris2.int/arc6+3']
+            2 ['http://nyc1.int/arc6+3', 'http://nyc2.int/arc6+3']
+
+        :param method: Target action (one of `StoragePolicy.READ` or
+                        `StoragePolicy.WRITE`)
+        :type method: `str`
+        :param location_hints: List of preferred locations, in descending order
+        :type location_hints: Iterable of `str` or `Location`
+
+        :return: List of target `Endpoint`s
+        :rtype: Iterable of `frozenset`s of `Endpoint`s
+
+        :raise ValueError: Invalid `method` passed
+        '''
+
+        # Step 1: Gather all candidate target rings
+        if method == self.READ:
+            candidates0 = self.read_set.union(self.write_set)
+        elif method == self.WRITE:
+            candidates0 = self.write_set
+        else:
+            raise ValueError('Invalid method: %r' % method)
+
+        # Step 2: Sort all candidates based on the location hints
+        def worker((temp_result, candidates), hint):
+            # Step 2a: Find all rings we didn't process yet at current hint
+            here = frozenset(
+                ring for ring in candidates if ring.location == hint)
+
+            # Step 2b: Update the result, and remove from the unused rings
+            return (temp_result + [here], candidates.difference(here))
+
+        location_hints = location_hints or []
+        initial_state = ([], candidates0)
+        result, leftover_candidates = reduce(worker, location_hints, initial_state)
+        result.append(leftover_candidates)
+
+        # Step 3: Turn every set of rings into a set of endpoints, skipping
+        # empty sets
+        return [frozenset(
+            endpoint
+                for ring in rings
+                for endpoint in ring)
+                for rings in result if rings]
 
 
 RING_SECTION_PREFIX = 'ring:'
