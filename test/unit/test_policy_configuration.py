@@ -321,7 +321,7 @@ class TestConfiguration(unittest.TestCase):
             sproxyd_endpoints = http://localhost
             ''')
 
-        self.assertRaisesRegexp(
+        utils.assertRaisesRegexp(
             ConfigurationError,
             'Invalid section name \'ring:\'',
             Configuration.from_stream, conf)
