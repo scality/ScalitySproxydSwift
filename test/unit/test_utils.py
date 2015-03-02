@@ -90,7 +90,7 @@ class TestMonitoringLoop(unittest.TestCase):
 
     def loop(self, ping):
         sleep = eventlet.sleep
-        with mock.patch('eventlet.sleep', side_effect=lambda _: sleep(0.001)):
+        with mock.patch('eventlet.sleep', side_effect=lambda _: sleep(0.002)):
             utils.monitoring_loop(ping, self.on_up, self.on_down)
 
     def test_monitoring_loop_with_ping_always_false(self):
@@ -112,7 +112,7 @@ class TestMonitoringLoop(unittest.TestCase):
         ping = mock.Mock(return_value=True)
 
         thread = eventlet.spawn(functools.partial(self.loop, ping))
-        eventlet.sleep(0.02)
+        eventlet.sleep(0.05)
         try:
             self.assertTrue(ping.call_count >= 5)
             self.assertEqual(1, self.on_up.call_count)
@@ -127,7 +127,7 @@ class TestMonitoringLoop(unittest.TestCase):
         ping = mock.Mock(side_effect=cycle)
 
         thread = eventlet.spawn(functools.partial(self.loop, ping))
-        eventlet.sleep(0.2)
+        eventlet.sleep(0.3)
         try:
             self.assertTrue(ping.call_count >= 5)
             # We've slept for a time long enough to see several (>=3 even
