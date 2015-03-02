@@ -15,22 +15,42 @@
 
 '''Tests for `swift_scality_backend.splice_utils`'''
 
+import errno
+import fcntl
+import os
 try:
     import cStringIO as StringIO
 except ImportError:
     import StringIO
 
 import eventlet
+import mock
 
 import swift.common.utils
 
 import swift_scality_backend.splice_utils
+
 import utils
 
 
 def _test_splice_socket_to_socket(test_length):
-    with open('/proc/sys/fs/pipe-max-size', 'r') as fd:
-        max_size = int(fd.read().strip())
+    # Linux 2.6 (RHEL6) doesn't have this procfs entry
+    # Whilst the code in `splice_utils` handles this gracefully, the tests used
+    # to fail because of this.
+    try:
+        with open('/proc/sys/fs/pipe-max-size', 'r') as fd:
+            max_size = int(fd.read().strip())
+    except IOError as exc:
+        if exc.errno == errno.ENOENT:
+            (rpipe, wpipe) = os.pipe()
+            try:
+                max_size = fcntl.fcntl(
+                    rpipe, swift_scality_backend.splice_utils.F_GETPIPE_SZ)
+            finally:
+                os.close(rpipe)
+                os.close(wpipe)
+        else:
+            raise
 
     orig_message = 'Hello, world!' * max_size
 
@@ -103,3 +123,41 @@ def test_splice_socket_to_socket():
 @utils.skipIf(not HAS_SPLICE, "No `splice` support")
 def test_splice_socket_to_socket_bounded():
     return _test_splice_socket_to_socket(test_length=True)
+
+
+@utils.skipIf(not HAS_SPLICE, "No `splice` support")
+def test_splice_no_pipe_max_size():
+    '''Test absence of `/proc/sys/fs/pipe-max-size`.'''
+
+    open_mock = mock.mock_open()
+
+    default_open = open
+
+    def fake_open(name, *args, **kwargs):
+        if name == '/proc/sys/fs/pipe-max-size':
+            raise IOError(errno.ENOENT, 'No such file or directory')
+        else:
+            return default_open(name, *args, **kwargs)
+
+    open_mock.side_effect = fake_open
+
+    with mock.patch('__builtin__.open', open_mock):
+        with mock.patch('fcntl.fcntl', side_effect=fcntl.fcntl) as mock_fcntl:
+            swift_scality_backend.splice_utils.MAX_PIPE_SIZE = None
+
+            try:
+                _test_splice_socket_to_socket(test_length=True)
+
+                mps = swift_scality_backend.splice_utils.MAX_PIPE_SIZE
+            finally:
+                swift_scality_backend.splice_utils.MAX_PIPE_SIZE = None
+
+            assert mps == 0, 'Unexpected MAX_PIPE_SIZE value: %d' % mps
+
+            assert mock_fcntl.call_count == 2, 'Unexpected fcntl call count'
+
+            for (args, kwargs) in mock_fcntl.call_args_list:
+                cmd = args[1]
+                assert \
+                    cmd == swift_scality_backend.splice_utils.F_GETPIPE_SZ, \
+                    'Unexpected fcntl call: %d' % cmd
