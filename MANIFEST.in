@@ -1,5 +1,4 @@
 include AUTHORS LICENSE
-include README.md
 include tox.ini
 include requirements.txt test-requirements.txt
 recursive-include test *.py
