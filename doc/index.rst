@@ -6,6 +6,13 @@
 Welcome to swift-scality-backend's documentation!
 =================================================
 
+This package implements a back-end for OpenStack_ Swift_ storing objects in a
+Scality_ RING installation.
+
+.. _OpenStack: http://openstack.org
+.. _Swift: http://docs.openstack.org/developer/swift/
+.. _Scality: http://scality.com
+
 Contents:
 
 .. toctree::
