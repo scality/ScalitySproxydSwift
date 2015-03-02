@@ -15,7 +15,10 @@
 
 '''Command-line utilities.'''
 
-import argparse
+try:
+    import argparse
+except ImportError:
+    argparse = None
 import ConfigParser
 import pkg_resources
 import sys
@@ -77,6 +80,13 @@ def storage_policy_query(args):
 
 def main(args=None):
     '''Main entry point.'''
+
+    if not argparse:
+        if sys.version_info < (2, 7):
+            sys.stderr.write('This tool requires `argparse` or Python 2.7\n')
+            sys.exit(2)
+        else:
+            raise ImportError('No module named argparse')
 
     parser = argparse.ArgumentParser(
         description='Scality Swift back-end utilities')
