@@ -10,7 +10,7 @@ function enable_sproxyd_driver {
         local swift_node_config=${SWIFT_CONF_DIR}/object-server/${node_number}.conf
         iniset ${swift_node_config} app:object-server use egg:swift_scality_backend#sproxyd_object
         # Host and port need to be configurable
-        iniset ${swift_node_config} app:object-server sproxyd_host localhost:81
+        iniset ${swift_node_config} app:object-server sproxyd_host 127.0.0.1:81
         # /proxy_path need to be configurable
         iniset ${swift_node_config} app:object-server sproxyd_path /proxy/chord_path
         # splice need to be configurable

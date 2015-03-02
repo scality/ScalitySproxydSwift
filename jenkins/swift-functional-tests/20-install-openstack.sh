@@ -26,11 +26,22 @@ function ubuntu12_specifics {
     sudo easy_install -U cmd2
 }
 
+function centos_specifics {
+    sudo yum install -y wget
+    wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python;
+    sudo easy_install -U six
+}
+
 function main {
-    if [[ "$(lsb_release -c -s)" == "precise" ]]; then
-        ubuntu12_specifics
-    elif [[ "$(lsb_release -c -s)" == "trusty" ]]; then
-        ubuntu14_specifics
+    source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
+    if is_ubuntu; then
+        if [[ $os_CODENAME == "precise" ]]; then
+            ubuntu12_specifics
+        elif [[ $os_CODENAME == "trusty" ]]; then
+            ubuntu14_specifics
+        fi
+    elif is_centos; then
+        centos_specifics
     fi
     common
 }
