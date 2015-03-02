@@ -74,7 +74,8 @@ def get_version():
         assert os.path.isfile(os.path.join(base, 'setup.py'))
 
         # Create egg-info
-        command = ['python', 'setup.py', '-q', '--no-user-cfg',
+        command = ['python', '-B',
+                   'setup.py', '-q', '--no-user-cfg',
                    'egg_info', '-e', tmp]
         subprocess.check_call(command, cwd=base)
         egginfo = os.path.join(tmp, project.replace('-', '_') + '.egg-info')
