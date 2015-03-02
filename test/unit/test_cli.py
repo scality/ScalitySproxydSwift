@@ -15,8 +15,8 @@
 
 '''Tests for `swift_scality_backend.cli`.'''
 
-import unittest
 import sys
+import unittest
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -24,6 +24,8 @@ except ImportError:
 
 from swift_scality_backend import cli
 from swift_scality_backend.policy_configuration import StoragePolicy
+
+import utils
 
 
 class FakeStream(object):
@@ -59,7 +61,7 @@ class TestStoragePolicyLint(unittest.TestCase):
         with FakeStream(sys, 'stderr') as stderr:
             rc = cli.storage_policy_lint(args)
 
-            self.assertRegexpMatches(
+            utils.assertRegexpMatches(
                 stderr.stream.getvalue(),
                 'Parsing error:')
 
@@ -74,7 +76,7 @@ class TestStoragePolicyLint(unittest.TestCase):
         with FakeStream(sys, 'stderr') as stderr:
             rc = cli.storage_policy_lint(args)
 
-            self.assertRegexpMatches(
+            utils.assertRegexpMatches(
                 stderr.stream.getvalue(),
                 'Configuration error:')
 
@@ -91,7 +93,7 @@ class TestStoragePolicyLint(unittest.TestCase):
         with FakeStream(sys, 'stderr') as stderr:
             rc = cli.storage_policy_lint(args)
 
-            self.assertRegexpMatches(
+            utils.assertRegexpMatches(
                 stderr.stream.getvalue(),
                 'Error: Oops')
 
@@ -118,7 +120,7 @@ class TestStoragePolicyQuery(unittest.TestCase):
         with FakeStream(sys, 'stderr') as stderr:
             rc = cli.storage_policy_query(args)
 
-            self.assertRegexpMatches(
+            utils.assertRegexpMatches(
                 stderr.stream.getvalue(),
                 'Error: Invalid section name')
 
@@ -134,7 +136,7 @@ class TestStoragePolicyQuery(unittest.TestCase):
         with FakeStream(sys, 'stderr') as stderr:
             rc = cli.storage_policy_query(args)
 
-            self.assertRegexpMatches(
+            utils.assertRegexpMatches(
                 stderr.stream.getvalue(),
                 'Error: Unknown policy index')
 
@@ -168,10 +170,10 @@ class TestStoragePolicyQuery(unittest.TestCase):
 
             out = stdout.stream.getvalue()
 
-            self.assertIn('http://paris1.int', out)
-            self.assertIn('http://paris2.int', out)
+            self.assertTrue('http://paris1.int' in out)
+            self.assertTrue('http://paris2.int' in out)
 
-            self.assertNotIn('sfo', out)
+            self.assertFalse('sfo' in out)
 
 
 class TestMain(unittest.TestCase):
@@ -182,14 +184,27 @@ class TestMain(unittest.TestCase):
         orig_exit = sys.exit
         sys.exit = exit
 
+        # Force failure even when `argparse` is installed on Python 2.6 setups
+        orig_argparse = cli.argparse
+        if sys.version_info < (2, 7):
+            cli.argparse = None
+
         try:
             with FakeStream(sys, 'stdout') as stdout:
-                self.assertRaises(
-                    SystemExit,
-                    cli.main, ['--help'])
+                with FakeStream(sys, 'stderr') as stderr:
+                    self.assertRaises(
+                        SystemExit,
+                        cli.main, ['--help'])
 
-                self.assertRegexpMatches(
-                    stdout.stream.getvalue(),
-                    'storage-policy-lint')
+                    if cli.argparse:
+                        utils.assertRegexpMatches(
+                            stdout.stream.getvalue(),
+                            'storage-policy-lint')
+                    else:
+                        self.assertTrue(sys.version_info < (2, 7))
+                        utils.assertRegexpMatches(
+                            stderr.stream.getvalue(),
+                            'Python 2.7')
         finally:
             sys.exit = orig_exit
+            cli.argparse = orig_argparse
