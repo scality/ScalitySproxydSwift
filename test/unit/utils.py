@@ -55,3 +55,15 @@ def assertRaisesRegexp(expected_exception, expected_regexp,
         else:
             excName = str(expected_exception)
         raise unittest.TestCase.failureException("%s not raised" % excName)
+
+
+def assertRegexpMatches(text, expected_regexp, msg=None):
+    '''Asserts the text matches the regular expression.'''
+
+    if isinstance(expected_regexp, basestring):
+        expected_regexp = re.compile(expected_regexp)
+
+    if not expected_regexp.search(text):
+        msg = msg or "Regexp didn't match"
+        msg = '%s: %r not found in %r' % (msg, expected_regexp.pattern, text)
+        raise unittest.TestCase.failureException(msg)
