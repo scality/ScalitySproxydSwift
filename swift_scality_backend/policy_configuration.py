@@ -19,9 +19,16 @@ Structures and procedures to handle Swift storage policy configuration files.
 
 import ConfigParser
 import operator
+import os.path
 import urlparse
 
+import swift.common.manager
+
 from swift_scality_backend import utils
+
+
+DEFAULT_CONFIGURATION_PATH = os.path.join(
+    swift.common.manager.SWIFT_DIR, 'scality-storage-policies.ini')
 
 
 class Endpoint(object):  # pylint: disable=R0903

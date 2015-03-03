@@ -79,5 +79,7 @@ setuptools.setup(
     entry_points={
         'paste.app_factory': [
             'sproxyd_object=swift_scality_backend.server:app_factory'],
+        'console_scripts': [
+            'swift-scality-backend=swift_scality_backend.cli:main'],
     },
 )
