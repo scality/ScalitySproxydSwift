@@ -32,6 +32,7 @@ except ImportError:
 # From `bits/fcntl-linux.h`
 F_GETPIPE_SZ = 1032
 MAX_PIPE_SIZE = None
+MAX_PIPE_SIZE_2_6_34 = 16 * 4096
 
 
 def splice_socket_to_socket(fd_in, fd_out, length=None):
@@ -64,7 +65,14 @@ def splice_socket_to_socket(fd_in, fd_out, length=None):
             max_size = fcntl.fcntl(rpipe, swift.common.utils.F_SETPIPE_SZ,
                                    MAX_PIPE_SIZE)
         else:
-            max_size = fcntl.fcntl(rpipe, F_GETPIPE_SZ)
+            try:
+                max_size = fcntl.fcntl(rpipe, F_GETPIPE_SZ)
+            except IOError as exc:
+                if exc.errno == errno.EINVAL:
+                    # Most likely a pre-2.6.35 kernel (RHEL6)
+                    max_size = MAX_PIPE_SIZE_2_6_34
+                else:
+                    raise
 
         assert max_size != 0, 'Calculating max_size failed'
 
