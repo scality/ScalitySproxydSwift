@@ -46,6 +46,13 @@ def _test_splice_socket_to_socket(test_length):
             try:
                 max_size = fcntl.fcntl(
                     rpipe, swift_scality_backend.splice_utils.F_GETPIPE_SZ)
+            except IOError as exc:
+                if exc.errno == errno.EINVAL:
+                    max_size = \
+                        swift_scality_backend.splice_utils.MAX_PIPE_SIZE_2_6_34
+                else:
+                    raise
+
             finally:
                 os.close(rpipe)
                 os.close(wpipe)
