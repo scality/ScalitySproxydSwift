@@ -24,6 +24,7 @@ import urllib
 import weakref
 
 import eventlet
+import eventlet.wsgi
 import mock
 import urllib3
 import urllib3.exceptions
@@ -32,6 +33,7 @@ from scality_sproxyd_client.sproxyd_client import SproxydClient
 from scality_sproxyd_client.exceptions import SproxydConfException, \
     SproxydHTTPException
 from . import utils
+from .utils import make_sproxyd_client
 
 
 class TestSproxydClient(unittest.TestCase):
@@ -39,35 +41,35 @@ class TestSproxydClient(unittest.TestCase):
 
     @mock.patch('eventlet.spawn')
     def test_init_with_default_timeout_values(self, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         self.assertEqual(10, sfs.conn_timeout)
         self.assertEqual(3, sfs.proxy_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_with_custom_timeout_values(self, _):
-        conf = {'sproxyd_conn_timeout': 42.1, 'sproxyd_proxy_timeout': 4242.1}
-        sfs = SproxydClient(conf, mock.Mock())
+        conf = {'conn_timeout': 42.1, 'proxy_timeout': 4242.1}
+        sfs = make_sproxyd_client(**conf)
         self.assertEqual(42.1, sfs.conn_timeout)
         self.assertEqual(4242.1, sfs.proxy_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_base_path_has_slashes(self, _):
-        conf = {'sproxyd_path': 'missing_slashes'}
-        sfs = SproxydClient(conf, mock.Mock())
+        conf = {'base_path': 'missing_slashes'}
+        sfs = make_sproxyd_client(**conf)
         self.assertEqual('/missing_slashes/', sfs.base_path)
 
     @mock.patch('eventlet.spawn')
     def test_init_sproxyd_hosts(self, _):
         # Mind the white spaces
-        conf = {'sproxyd_host': ' host1:81 , host2:82 '}
-        sfs = SproxydClient(conf, mock.Mock())
+        conf = {'hosts': [('host1', 81), ('host2', 82)]}
+        sfs = make_sproxyd_client(**conf)
         expected_sproxyd_hosts_set = set([('host1', 81), ('host2', 82)])
         self.assertEqual(expected_sproxyd_hosts_set, sfs.sproxyd_hosts_set)
 
     @mock.patch('eventlet.spawn')
     def test_init_monitoring_threads(self, _):
-        conf = {'sproxyd_host': 'host1:81,host2:82'}
-        sfs = SproxydClient(conf, mock.Mock())
+        conf = {'hosts': [('host1', 81), ('host2', 82)]}
+        sfs = make_sproxyd_client(**conf)
         self.assertEqual(2, len(sfs.healthcheck_threads))
 
     @mock.patch('eventlet.spawn')
@@ -75,7 +77,7 @@ class TestSproxydClient(unittest.TestCase):
                 side_effect=SproxydConfException(""))
     def test_ping_with_bad_sproxyd_conf(self, request_mock, _):
         mock_logger = mock.Mock()
-        sfs = SproxydClient({}, mock_logger)
+        sfs = make_sproxyd_client(logger=mock_logger)
         ping_result = sfs.ping('http://ignored')
 
         self.assertFalse(ping_result)
@@ -88,7 +90,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('urllib3.PoolManager.request', side_effect=Exception)
     def test_ping_with_unexpected_exc(self, urlopen_mock, _):
         mock_logger = mock.Mock()
-        sfs = SproxydClient({}, mock_logger)
+        sfs = make_sproxyd_client(logger=mock_logger)
         ping_result = sfs.ping('http://ignored')
 
         self.assertFalse(ping_result)
@@ -98,7 +100,7 @@ class TestSproxydClient(unittest.TestCase):
 
     @mock.patch('eventlet.spawn')
     def test_on_sproxyd_up(self, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         host, port = 'host1', 81
         sfs.on_sproxyd_up(host, port)
         self.assertTrue((host, port) in sfs.sproxyd_hosts_set)
@@ -109,7 +111,7 @@ class TestSproxydClient(unittest.TestCase):
     # We need this mock because otherwise the failure detector would
     # remove localhost:81 from the list of valid sproxyd hosts
     def test_on_sproxyd_down(self, mock_ping, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         # This has to match the default value of `sproxyd_host`
         sfs.on_sproxyd_down('localhost', 81)
         self.assertFalse(('localhost', 81) in sfs.sproxyd_hosts_set)
@@ -119,7 +121,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('socket.socket.connect', side_effect=socket.timeout)
     def test_do_http_connection_timeout(self, mock_http_connect, _):
         timeout = 0.01
-        sfs = SproxydClient({'sproxyd_conn_timeout': timeout}, mock.Mock())
+        sfs = make_sproxyd_client(conn_timeout=timeout)
 
         regex = r'^.*connect timeout=%s.*$' % timeout
         utils.assertRaisesRegexp(urllib3.exceptions.ConnectTimeoutError, regex,
@@ -136,9 +138,7 @@ class TestSproxydClient(unittest.TestCase):
         t = eventlet.spawn(run_server1, server1)
         timeout = 0.01
         with mock.patch('eventlet.spawn'):
-            sfs = SproxydClient({'sproxyd_host': '%s:%d' % (ip, port),
-                                'sproxyd_proxy_timeout': timeout},
-                                mock.Mock())
+            sfs = make_sproxyd_client(hosts=[(ip, port)], proxy_timeout=timeout)
 
         regex = r'^.*read timeout=%s.*$' % timeout
         utils.assertRaisesRegexp(urllib3.exceptions.ReadTimeoutError, regex,
@@ -151,7 +151,7 @@ class TestSproxydClient(unittest.TestCase):
         mock_response.status = 500
         mock_response.read.return_value = 'error'
 
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         msg = r'^caller1: %s .*' % mock_response.read.return_value
         with mock.patch('urllib3.HTTPConnectionPool.request', return_value=mock_response):
             utils.assertRaisesRegexp(SproxydHTTPException, msg, sfs._do_http,
@@ -163,7 +163,7 @@ class TestSproxydClient(unittest.TestCase):
     def test_do_http(self, mock_http, _):
         mock_handler = mock.Mock()
 
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         method = 'HTTP_METH'
         # Note the white space, to test proper URL encoding
         path = 'pa th'
@@ -178,7 +178,7 @@ class TestSproxydClient(unittest.TestCase):
 
     @mock.patch('eventlet.spawn')
     def test_do_http_drains_connection(self, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         mock_response = mock.Mock()
         mock_response.status = 200
         mock_response.read.side_effect = ['blah', 'blah', '']
@@ -196,7 +196,7 @@ class TestSproxydClient(unittest.TestCase):
         mock_http.return_value = urllib3.response.HTTPResponse(status=200,
                                                                headers=headers)
 
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         metadata = sfs.get_meta('object_name_1')
 
         mock_http.assert_called_once_with('HEAD',
@@ -208,7 +208,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('urllib3.HTTPConnectionPool.request',
                 return_value=urllib3.response.HTTPResponse(status=404))
     def test_get_meta_on_404(self, mock_http, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
 
         self.assertTrue(sfs.get_meta('object_name_1') is None)
 
@@ -216,7 +216,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('urllib3.HTTPConnectionPool.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
     def test_put_meta(self, mock_http, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         sfs.put_meta('object_name_1', 'fake')
 
         self.assertEqual(1, mock_http.call_count)
@@ -231,7 +231,7 @@ class TestSproxydClient(unittest.TestCase):
 
     @mock.patch('eventlet.spawn')
     def test_put_meta_with_no_metadata(self, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
 
         utils.assertRaisesRegexp(SproxydHTTPException, 'no usermd',
                                  sfs.put_meta, 'object_name_1', None)
@@ -240,7 +240,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('urllib3.HTTPConnectionPool.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
     def test_del_object(self, mock_http, _):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
         sfs.del_object('object_name_1')
 
         mock_http.assert_called_once_with('DELETE',
@@ -260,8 +260,9 @@ class TestSproxydClient(unittest.TestCase):
         t = eventlet.spawn(eventlet.wsgi.server, server, hello_world)
 
         with mock.patch('eventlet.spawn'):
-            sfs = SproxydClient({'sproxyd_host': '%s:%d' % (ip, port)},
-                                mock.Mock())
+            hosts = [(ip, port)]
+            sfs = make_sproxyd_client(hosts=hosts)
+
         obj = sfs.get_object('ignored')
 
         self.assertEqual(content, obj.next())
@@ -271,7 +272,7 @@ class TestSproxydClient(unittest.TestCase):
 
     @mock.patch('eventlet.spawn')
     def test_del_instance(self, mock_spawn):
-        sfs = SproxydClient({}, mock.Mock())
+        sfs = make_sproxyd_client()
 
         # Reset mock to clear some references to bound methods
         # Otherwise reference count can never go to 0

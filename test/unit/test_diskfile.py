@@ -20,8 +20,6 @@ import StringIO
 import unittest
 import urllib
 
-import eventlet
-import eventlet.wsgi
 import mock
 import swift.common.exceptions
 import swift.common.utils
@@ -31,8 +29,8 @@ import urllib3.exceptions
 from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
 from scality_sproxyd_client.exceptions import SproxydHTTPException
-from scality_sproxyd_client.sproxyd_client import SproxydClient
 from . import utils
+from .utils import make_sproxyd_client
 
 
 NEW_SPLICE = 'new_splice'
@@ -46,9 +44,6 @@ except ImportError:
         SPLICE = OLD_SPLICE
     else:
         SPLICE = NO_SPLICE_AT_ALL
-
-
-eventlet.monkey_patch()
 
 
 class FakeHTTPResp(httplib.HTTPResponse):
@@ -137,7 +132,7 @@ class TestDiskFileManager(unittest.TestCase):
         self._test_init_splice_unavailable()
 
     def test_get_diskfile(self):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         dfm = DiskFileManager({}, mock.Mock())
 
         diskfile = dfm.get_diskfile(sproxyd_client, 'a', 'c', 'o')
@@ -150,7 +145,7 @@ class TestDiskFileWriter(unittest.TestCase):
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
                 return_value=FakeHTTPConn())
     def test_init(self, mock_http):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         # Note the white space, to test proper URL encoding
         DiskFileWriter(sproxyd_client, 'ob j')
 
@@ -162,7 +157,7 @@ class TestDiskFileWriter(unittest.TestCase):
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
                 return_value=FakeHTTPConn(404))
     def test_put_with_404_response(self, mock_http):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         dfw = DiskFileWriter(sproxyd_client, 'obj')
 
         msg = r'.*404 / %s.*' % mock_http.return_value.getresponse().read()
@@ -172,7 +167,7 @@ class TestDiskFileWriter(unittest.TestCase):
                 return_value=FakeHTTPConn(200))
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_put_with_200_response(self, mock_put_meta, mock_http):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         dfw = DiskFileWriter(sproxyd_client, 'obj')
 
         dfw.put({})
@@ -186,7 +181,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         self.assertRaises(swift.common.exceptions.DiskFileDeleted, df.open)
@@ -195,7 +190,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_open(self, mock_get_meta):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         df.open()
@@ -203,7 +198,7 @@ class TestDiskFile(unittest.TestCase):
         self.assertEqual({'name': 'o'}, df._metadata)
 
     def test_get_metadata_when_diskfile_not_open(self):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
@@ -212,7 +207,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_read_metadata(self, mock_get_meta):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         metadata = df.read_metadata()
@@ -220,7 +215,7 @@ class TestDiskFile(unittest.TestCase):
         self.assertEqual({'name': 'o'}, metadata)
 
     def test_reader(self):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         reader = df.reader()
@@ -229,7 +224,7 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
                 return_value=FakeHTTPConn())
     def test_create(self, mock_http):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         with df.create() as writer:
@@ -237,7 +232,7 @@ class TestDiskFile(unittest.TestCase):
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_write_metadata(self, mock_put_meta):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         df.write_metadata({'k': 'v'})
@@ -246,7 +241,7 @@ class TestDiskFile(unittest.TestCase):
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.del_object')
     def test_delete(self, mock_del_object):
-        sproxyd_client = SproxydClient({}, mock.Mock())
+        sproxyd_client = make_sproxyd_client()
         df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
 
         df.delete("ignored")
@@ -258,7 +253,7 @@ def test_ping_when_network_exception_is_raised():
 
     def assert_ping_failed(expected_exc):
         logger = mock.Mock()
-        filesystem = SproxydClient({}, logger)
+        filesystem = make_sproxyd_client(logger=logger)
 
         with mock.patch('urllib3.PoolManager.request', side_effect=expected_exc):
             ping_result = filesystem.ping('http://ignored/')

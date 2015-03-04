@@ -36,19 +36,17 @@ def drain_connection(response):
 class SproxydClient(object):
     """A sproxyd file system scheme."""
 
-    def __init__(self, conf, logger):
+    def __init__(self, hosts, base_path, conn_timeout, proxy_timeout, logger):
         self.logger = logger
-        self.conn_timeout = float(conf.get('sproxyd_conn_timeout', 10))
-        self.proxy_timeout = float(conf.get('sproxyd_proxy_timeout', 3))
+        self.conn_timeout = float(conn_timeout)
+        self.proxy_timeout = float(proxy_timeout)
 
-        path = conf.get('sproxyd_path', '/proxy/chord')
-        self.base_path = '/%s/' % path.strip('/')
+        self.base_path = '/%s/' % base_path.strip('/')
 
         self.healthcheck_threads = []
         self.sproxyd_hosts_set = set()
-        hosts = conf.get('sproxyd_host', 'localhost:81').strip(',')
-        for host in hosts.split(","):
-            ip_addr, port = host.strip().split(':')
+
+        for (ip_addr, port) in hosts:
             self.sproxyd_hosts_set.add((ip_addr, int(port)))
 
             url = 'http://%s:%d%s.conf' % (ip_addr, int(port), self.base_path)

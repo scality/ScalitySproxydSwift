@@ -40,7 +40,17 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
-        self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(conf, self.logger)
+        conn_timeout = float(conf.get('sproxyd_conn_timeout', 10))
+        proxy_timeout = float(conf.get('sproxyd_proxy_timeout', 3))
+
+        path = conf.get('sproxyd_path', '/proxy/chord')
+        base_path = '/%s/' % path.strip('/')
+
+        hosts = [host.strip().split(':')
+                 for host in conf.get('sproxyd_hosts', 'localhost:81').strip(',').split(',')]
+
+        self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(
+            hosts, base_path, conn_timeout, proxy_timeout, self.logger)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
