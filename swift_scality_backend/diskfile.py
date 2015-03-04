@@ -233,7 +233,8 @@ class DiskFile(object):
         """Open the file and read the metadata.
 
         This method must populate the _metadata attribute.
-        :raises DiskFileDeleted: if it does not exist
+
+        :raise DiskFileDeleted: if it does not exist
         """
         metadata = self._filesystem.get_meta(self._name)
         if metadata is None:
