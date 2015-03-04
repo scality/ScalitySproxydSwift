@@ -16,6 +16,8 @@
 
 """ Scality Sproxyd Object Server for Swift """
 
+import errno
+import itertools
 import os
 import urlparse
 
@@ -28,6 +30,7 @@ from swift import gettext_ as _
 import swift.obj.server
 
 import swift_scality_backend.diskfile
+import swift_scality_backend.policy_configuration
 import scality_sproxyd_client.sproxyd_client
 
 POLICY_IDX_STUB = object()
@@ -35,6 +38,15 @@ POLICY_IDX_STUB = object()
 
 class ObjectController(swift.obj.server.ObjectController):
     """Implements the WSGI application for the Scality Object Server."""
+
+    def __init__(self, *args, **kwargs):
+        self._clients = {}
+        self._conn_timeout = None
+        self._proxy_timeout = None
+        self._diskfile_mgr = None
+        self._policy_configuration = None
+
+        super(ObjectController, self).__init__(*args, **kwargs)
 
     def setup(self, conf):
         """Class setup
@@ -52,9 +64,63 @@ class ObjectController(swift.obj.server.ObjectController):
         urls = ['http://%s:%d/%s/' % (ip, int(port), base_path.strip('/'))
                 for (ip, port) in hosts]
 
-        self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(
+        self._clients[0] = scality_sproxyd_client.sproxyd_client.SproxydClient(
             (urlparse.urlparse(url) for url in urls), conn_timeout, proxy_timeout, self.logger)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
+
+        self._conn_timeout = conn_timeout
+        self._proxy_timeout = proxy_timeout
+
+        sp_path = \
+            swift_scality_backend.policy_configuration.DEFAULT_CONFIGURATION_PATH
+        self.logger.info('Reading storage policy configuration from %r', sp_path)
+        try:
+            with open(sp_path, 'r') as fd:
+                self.logger.info('Parsing storage policy configuration')
+                self._policy_configuration = \
+                    swift_scality_backend.policy_configuration.Configuration.from_stream(fd)
+        except IOError as exc:
+            if exc.errno == errno.ENOENT:
+                self.logger.info(
+                    'No storage policy configuration found at %r', sp_path)
+                self._policy_configuration = None
+            else:
+                self.logger.exception(
+                    'Failure while reading storage policy configuration '
+                    'from %r', sp_path)
+                raise
+
+    def _get_client_for_policy(self, policy_idx):
+        '''Retrieve or create an Sproxyd client for a given storage policy
+
+        :param policy_idx: Policy identifier
+        :type policy_idx: `int`
+        :return: Sproxyd client which can be used for requests in the given
+                 policy
+        :rtype: `scality_sproxyd_client.sproxyd_client.SproxydClient`
+
+        :raise RuntimeError: No policies configured
+        '''
+
+        if policy_idx not in self._clients:
+            if not self._policy_configuration:
+                raise RuntimeError(
+                    'No storage policy configuration found, but request for '
+                    'policy %r' % policy_idx)
+
+            policy = self._policy_configuration.get_policy(policy_idx)
+
+            # TODO: Separate read- and write-endpoints
+            # TODO: Location hints
+            endpoints = policy.lookup(policy.WRITE, location_hints=[])
+
+            client = scality_sproxyd_client.sproxyd_client.SproxydClient(
+                itertools.chain(*endpoints),
+                self._conn_timeout, self._proxy_timeout, self.logger)
+
+            self._clients[policy_idx] = client
+
+        return self._clients[policy_idx]
 
     def get_diskfile(self, device, partition, account, container, obj,
                      policy_idx=POLICY_IDX_STUB, **kwargs):
@@ -62,8 +128,16 @@ class ObjectController(swift.obj.server.ObjectController):
         Utility method for instantiating a DiskFile object supporting a
         given REST API.
         """
+
+        # When `policy_idx` is not set (e.g. running Swift 1.13), the fallback
+        # policy 0 should be used.
+        if policy_idx is POLICY_IDX_STUB:
+            policy_idx = 0
+
+        client = self._get_client_for_policy(policy_idx)
+
         return self._diskfile_mgr.get_diskfile(
-            self._filesystem, account, container, obj)
+            client, account, container, obj)
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,
