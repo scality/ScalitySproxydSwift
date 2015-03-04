@@ -39,6 +39,50 @@ import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
 
 
+def _endpoint_to_address(endpoint):
+    '''Convert an :class:`urlparse.ParseResult` into a (host, port) pair
+
+    :param endpoint: URL for which to retrieve the address
+    :type endpoint: :class:`urlparse.ParseResult`
+
+    :return: Host and port of endpoint
+    :rtype: `(str, int)`
+    '''
+
+    defaults = {
+        'http': 80,
+        'https': 443,
+    }
+
+    netloc = endpoint.netloc
+
+    if netloc.startswith('['):
+        # Tricky IPv6
+        addr, rest = netloc.split(']', 1)
+        addr = '%s]' % addr
+
+        if not rest:
+            port = defaults[endpoint.scheme]
+        else:
+            if rest[0] != ':':
+                raise ValueError('Unexpected netloc: %r' % netloc)
+
+            port = int(rest[1:])
+    else:
+        parts = netloc.split(':', 1)
+        if len(parts) == 2:
+            addr, rest = parts
+        else:
+            addr, rest = parts[0], ''
+
+        if rest:
+            port = int(rest)
+        else:
+            port = defaults[endpoint.scheme]
+
+    return (addr, port)
+
+
 class DiskFileWriter(object):
     """A simple sproxyd pass-through
 
@@ -56,22 +100,25 @@ class DiskFileWriter(object):
         headers = {
             'transfer-encoding': 'chunked'
         }
-        self.logger.debug("DiskFileWriter for %s initialized", self.safe_path)
+        self.logger.debug("DiskFileWriter for %r initialized", name)
 
-        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
+        endpoint = self._filesystem.get_next_endpoint()
+        (ipaddr, port) = _endpoint_to_address(endpoint)
+
+        path = '/'.join([
+            endpoint.path.rstrip('/'),
+            urllib.quote(name),
+        ])
+
         with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
             self._conn = swift.common.bufferedhttp.http_connect_raw(
-                ipaddr, port, 'PUT', self.safe_path, headers)
+                ipaddr, port, 'PUT', path, headers)
 
     def __repr__(self):
         ret = 'DiskFileWriter(filesystem=%r, object_name=%r)'
         return ret % (self._filesystem, self._name)
 
     logger = property(lambda self: self._filesystem.logger)
-
-    @property
-    def safe_path(self):
-        return self._filesystem.base_path + urllib.quote(self._name)
 
     def write(self, chunk):
         """Write a chunk of data.
@@ -98,7 +145,7 @@ class DiskFileWriter(object):
                     str(resp.status), str(msg)))
 
         metadata['name'] = self._name
-        self.logger.debug("Data successfully written for object : %s", self.safe_path)
+        self.logger.debug("Data successfully written for object: %s", self._name)
         self._filesystem.put_meta(self._name, metadata)
 
 
@@ -124,10 +171,6 @@ class DiskFileReader(object):
 
     logger = property(lambda self: self._filesystem.logger)
 
-    @property
-    def safe_path(self):
-        return self._filesystem.base_path + urllib.quote(self._name)
-
     @utils.trace
     def __iter__(self):
         return self._filesystem.get_object(self._name)
@@ -138,16 +181,21 @@ class DiskFileReader(object):
 
     @utils.trace
     def zero_copy_send(self, wsockfd):
-        (ipaddr, port) = self._filesystem.sproxyd_hosts.next()
+        endpoint = self._filesystem.get_next_endpoint()
         conn = None
+
+        path = '/'.join([
+            endpoint.path.rstrip('/'),
+            urllib.quote(self._name),
+        ])
 
         with swift.common.exceptions.ConnectionTimeout(
                 self._filesystem.conn_timeout):
             conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
-                '%s:%s' % (ipaddr, port))
+                endpoint.netloc)
 
             try:
-                conn.putrequest('GET', self.safe_path, skip_host=False)
+                conn.putrequest('GET', path, skip_host=False)
                 conn.endheaders()
             except:
                 conn.close()
@@ -156,16 +204,18 @@ class DiskFileReader(object):
         with conn:
             resp = conn.getresponse()
 
+            (ipaddr, port) = _endpoint_to_address(endpoint)
+
             if resp.status != httplib.OK:
                 raise SproxydHTTPException(
                     'Unexpected response code: %s' % resp.status,
-                    ipaddr=ipaddr, port=port, path=self.safe_path,
+                    ipaddr=ipaddr, port=port, path=path,
                     http_status=resp.status, http_reason=resp.reason)
 
             if resp.chunked:
                 raise SproxydHTTPException(
                     'Chunked response not supported',
-                    ipaddr=ipaddr, port=port, path=self.safe_path,
+                    ipaddr=ipaddr, port=port, path=path,
                     http_status=resp.status, http_reason=resp.reason)
 
             buff = resp.fp.get_buffered()

@@ -19,6 +19,7 @@ import httplib
 import StringIO
 import unittest
 import urllib
+import urlparse
 
 import mock
 import swift.common.exceptions
@@ -28,6 +29,7 @@ import urllib3.exceptions
 
 from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
+from swift_scality_backend.diskfile import _endpoint_to_address
 from scality_sproxyd_client.exceptions import SproxydHTTPException
 from . import utils
 from .utils import make_sproxyd_client
@@ -151,7 +153,7 @@ class TestDiskFileWriter(unittest.TestCase):
 
         expected_header = {'transfer-encoding': 'chunked'}
         mock_http.assert_called_once_with(mock.ANY, mock.ANY, 'PUT',
-                                          sproxyd_client.base_path + urllib.quote('ob j'),
+                                          '/proxy/chord/%s' % urllib.quote('ob j'),
                                           expected_header)
 
     @mock.patch('swift.common.bufferedhttp.http_connect_raw',
@@ -256,7 +258,7 @@ def test_ping_when_network_exception_is_raised():
         filesystem = make_sproxyd_client(logger=logger)
 
         with mock.patch('urllib3.PoolManager.request', side_effect=expected_exc):
-            ping_result = filesystem.ping('http://ignored/')
+            ping_result = filesystem._ping('http://ignored/')
 
             assert ping_result is False, ('Ping returned %r, '
                                           'not False' % ping_result)
@@ -267,3 +269,49 @@ def test_ping_when_network_exception_is_raised():
 
     for exc in [IOError, urllib3.exceptions.HTTPError]:
         yield assert_ping_failed, exc
+
+
+class TestEndpointToAddress(unittest.TestCase):
+    def test_basic_http(self):
+        self.assertEqual(
+            ('localhost', 80),
+            _endpoint_to_address(urlparse.urlparse('http://localhost/path')))
+
+    def test_basic_https(self):
+        self.assertEqual(
+            ('localhost', 443),
+            _endpoint_to_address(urlparse.urlparse('https://localhost/path')))
+
+    def test_http(self):
+        self.assertEqual(
+            ('localhost', 8080),
+            _endpoint_to_address(urlparse.urlparse('http://localhost:8080/path')))
+
+    def test_https(self):
+        self.assertEqual(
+            ('localhost', 4443),
+            _endpoint_to_address(urlparse.urlparse('https://localhost:4443/path')))
+
+    def test_ipv4(self):
+        self.assertEqual(
+            ('127.0.0.1', 81),
+            _endpoint_to_address(urlparse.urlparse('http://127.0.0.1:81/path')))
+
+    def test_ipv6(self):
+        self.assertEqual(
+            ('[fe81::3210:b3ff:fecc:73e6]', 81),
+            _endpoint_to_address(
+                urlparse.urlparse('http://[fe81::3210:b3ff:fecc:73e6]:81/path')))
+
+    def test_ipv6_default_port(self):
+        self.assertEqual(
+            ('[fe81::3210:b3ff:fecc:73e6]', 80),
+            _endpoint_to_address(
+                urlparse.urlparse('http://[fe81::3210:b3ff:fecc:73e6]/path')))
+
+    def test_invalid_ipv6_port(self):
+        self.assertRaises(
+            ValueError,
+            _endpoint_to_address,
+            urlparse.urlparse(
+                'http://[fe81::3210:b3ff:fecc:73e6]abc/path'))

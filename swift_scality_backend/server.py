@@ -17,6 +17,7 @@
 """ Scality Sproxyd Object Server for Swift """
 
 import os
+import urlparse
 
 import eventlet
 
@@ -48,9 +49,11 @@ class ObjectController(swift.obj.server.ObjectController):
 
         hosts = [host.strip().split(':')
                  for host in conf.get('sproxyd_hosts', 'localhost:81').strip(',').split(',')]
+        urls = ['http://%s:%d/%s/' % (ip, int(port), base_path.strip('/'))
+                for (ip, port) in hosts]
 
         self._filesystem = scality_sproxyd_client.sproxyd_client.SproxydClient(
-            hosts, base_path, conn_timeout, proxy_timeout, self.logger)
+            (urlparse.urlparse(url) for url in urls), conn_timeout, proxy_timeout, self.logger)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,

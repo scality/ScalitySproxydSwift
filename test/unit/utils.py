@@ -18,6 +18,7 @@
 import functools
 import re
 import unittest
+import urlparse
 
 import mock
 import nose.plugins.skip
@@ -72,19 +73,19 @@ def assertRegexpMatches(text, expected_regexp, msg=None):
         raise unittest.TestCase.failureException(msg)
 
 
-def make_sproxyd_client(hosts=None, base_path=None, conn_timeout=None,
+def make_sproxyd_client(endpoints=None, conn_timeout=None,
                         proxy_timeout=None, logger=None):
     '''Construct an `SproxydClient` instance using default values.'''
 
     def maybe(default, value):
         return value if value is not None else default
 
-    hosts = maybe([('localhost', 81)], hosts)
-    base_path = maybe('/proxy/chord', base_path)
+    endpoints = maybe(
+        [urlparse.urlparse('http://localhost:81/proxy/chord/')], endpoints)
     conn_timeout = maybe(10.0, conn_timeout)
     proxy_timeout = maybe(3.0, proxy_timeout)
     logger = maybe(mock.Mock(), logger)
 
     return SproxydClient(
-        hosts=hosts, base_path=base_path, conn_timeout=conn_timeout,
+        endpoints=endpoints, conn_timeout=conn_timeout,
         proxy_timeout=proxy_timeout, logger=logger)
