@@ -122,17 +122,19 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
 
 class TestSomewhatBufferedHTTPConnection(unittest.TestCase):
 
-    def test_discard_buffering_arg_on_py26(self):
-        with mock.patch('httplib.HTTPResponse.__init__') \
-                as mock_http_response_init:
-            kwargs = dict(
-                sock=None, debuglevel=0, strict=0, method=None, buffering=False)
+    @mock.patch('httplib.HTTPResponse.__init__')
+    def test_discard_buffering_arg_on_py26(
+            self, mock_http_response_init):
 
-            response_class = \
-                swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
-            response_obj = response_class(**kwargs)
+        kwargs = dict(
+            sock=None, debuglevel=0, strict=0, method=None, buffering=False)
 
-            if sys.version_info < (2, 7):
-                del kwargs['buffering']
-            mock_http_response_init.assert_called_once_with(
-                response_obj, **kwargs)
+        response_class = \
+            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+        response_obj = response_class(**kwargs)
+
+        if sys.version_info < (2, 7):
+            del kwargs['buffering']
+
+        mock_http_response_init.assert_called_once_with(
+            response_obj, **kwargs)
