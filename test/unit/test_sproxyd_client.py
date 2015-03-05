@@ -301,3 +301,14 @@ class TestSproxydClient(unittest.TestCase):
             self.skipTest("GC didn't collect our object yet")
 
         mock_spawn().kill.assert_called_once_with()
+
+    @mock.patch('eventlet.spawn')
+    def test_has_alive_endpoints(self, _):
+        sfs = make_sproxyd_client()
+
+        self.assertTrue(sfs.has_alive_endpoints)
+
+        sfs._on_sproxyd_down(
+            urlparse.urlparse('http://localhost:81/proxy/chord/'))
+
+        self.assertFalse(sfs.has_alive_endpoints)

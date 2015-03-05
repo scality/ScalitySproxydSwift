@@ -121,6 +121,16 @@ class SproxydClient(object):
         self._alter_alive(lambda s: s.difference([endpoint]))
         self.logger.debug('endpoints is now: %r', self.endpoints)
 
+    @property
+    def has_alive_endpoints(self):
+        '''Determine whether any client endpoints are alive
+
+        :return: Client has alive endpoints
+        :rtype: `bool`
+        '''
+
+        return len(self._alive) > 0
+
     def __del__(self):
         for thread in self._healthcheck_threads:
             try:
