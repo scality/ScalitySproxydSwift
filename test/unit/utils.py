@@ -46,9 +46,12 @@ def assertRaisesRegexp(expected_exception, expected_regexp,
         callable_obj(*args, **kwargs)
     except expected_exception as exc_value:
         if not re.search(expected_regexp, str(exc_value)):
+            # We accept both `string` and compiled regex object as 2nd
+            # argument to assertRaisesRegexp
+            pattern = getattr(expected_regexp, 'pattern', expected_regexp)
             raise unittest.TestCase.failureException(
                 '"%s" does not match "%s"' %
-                (expected_regexp.pattern, str(exc_value)))
+                (pattern, str(exc_value)))
     else:
         if hasattr(expected_exception, '__name__'):
             excName = expected_exception.__name__
