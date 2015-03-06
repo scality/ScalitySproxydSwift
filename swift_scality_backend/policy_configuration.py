@@ -34,27 +34,28 @@ DEFAULT_CONFIGURATION_PATH = os.path.join(
 class Endpoint(object):  # pylint: disable=R0903
     '''Representation of an Sproxyd endpoint URL
 
-    This is a restricted version of `urlparse.ParseResult`. The `scheme`,
-    `netloc` and `path` attributes of instances of this type correspond to the
-    same attributes on `urlparse.ParseResult` objects.
+    This is a restricted version of :class:`urlparse.ParseResult`. The
+    :attr:`scheme`, :attr:`netloc` and :attr:`path` attributes of instances of
+    this type correspond to the same attributes on
+    :class:`urlparse.ParseResult` objects.
 
     The constructor expects a URL in its `str` format, or an already-parsed URL
-    compatible with `urlparse.ParseResult`::
+    compatible with :class:`urlparse.ParseResult`::
 
         >>> Endpoint('http://localhost')
         Endpoint(url='http://localhost')
         >>> Endpoint(urlparse.urlparse('http://localhost'))
         Endpoint(url='http://localhost')
 
-    `Endpoint`s can't have `params`, `query` or `fragment` portions in their
-    URL. This results in `ValueError`s at construction time::
+    An :class:`Endpoint` can't have `params`, `query` or `fragment` portions in
+    its URL. This results in a :exc:`ValueError` at construction time::
 
         >>> Endpoint('http://localhost/?a=b')
         Traceback (most recent call last):
         ...
         ValueError: Endpoint URL can't have query values
 
-    The string-representation of an `Endpoint` behaves as the URL it
+    The string-representation of an :class:`Endpoint` behaves as the URL it
     represents::
 
         >>> print Endpoint('http://localhost')
@@ -72,8 +73,8 @@ class Endpoint(object):  # pylint: disable=R0903
         >>> localhost.url # doctest: +ELLIPSIS
         ParseResult(scheme='http', netloc='localhost', path='/path', ...)
 
-    `Endpoint`s can be compared to each other, to URL strings or
-    `urlparse.ParseResult`s::
+    An :class:`Endpoint` can be compared to others, to URL strings or to
+    :class:`urlparse.ParseResult` instances::
 
         >>> Endpoint('http://localhost/path') == 'http://localhost/path'
         True
@@ -82,21 +83,18 @@ class Endpoint(object):  # pylint: disable=R0903
         >>> Endpoint('http://localhost') == \
                 urlparse.urlparse('http://otherhost')
         False
+
+    :param url: URL of the endpoint
+    :type url: `str` or :class:`urlparse.ParseResult`
+
+    :raise ValueError: URL has params
+    :raise ValueError: URL has query values
+    :raise ValueError: URL has a fragment
     '''
 
     __slots__ = '_url',
 
     def __init__(self, url):
-        '''Construct an `Endpoint` from a URL
-
-        :param url: URL of the endpoint
-        :type url: `str` or `urlparse..ParseResult`
-
-        :raise ValueError: URL has params
-        :raise ValueError: URL has query values
-        :raise ValueError: URL has a fragment
-        '''
-
         if isinstance(url, basestring):
             url = urlparse.urlparse(url)
 
@@ -150,12 +148,12 @@ class Endpoint(object):  # pylint: disable=R0903
 class Location(object):  # pylint: disable=R0903
     '''Representation of a Ring location
 
-    Values of this type have only one useful attribute, `name`::
+    Values of this type have only one useful attribute, :attr:`name`::
 
         >>> Location('paris').name
         'paris'
 
-    They can be compared to `str`s or other `Location`s::
+    They can be compared to `str` or another :class:`Location`::
 
         >>> Location('paris') == 'paris'
         True
@@ -163,17 +161,14 @@ class Location(object):  # pylint: disable=R0903
         False
         >>> Location('paris') != 'sfo'
         True
+
+    :param name: Name of the location
+    :type name: `str`
     '''
 
     __slots__ = '_name',
 
     def __init__(self, name):
-        '''Construct a `Location`
-
-        :param name: Name of the location
-        :type name: `str`
-        '''
-
         self._name = name
 
     name = property(operator.attrgetter('_name'), doc='Location name')
@@ -207,9 +202,9 @@ class Location(object):  # pylint: disable=R0903
 class Ring(object):  # pylint: disable=R0903
     '''Representation of a Ring
 
-    A `Ring` has a name, a location and a set of endpoints, available as
+    A :class:`Ring` has a name, a location and a set of endpoints, available as
     attributes. The constructor supports `str` values as inputs, but these will
-    be turned into `Location` and `Endpoint` objects::
+    be turned into :class:`Location` and :class:`Endpoint` objects::
 
         >>> r = Ring('paris-arc6+3', location='paris', \
                      endpoints=['http://localhost', 'http://otherhost'])
@@ -218,7 +213,7 @@ class Ring(object):  # pylint: disable=R0903
         >>> r.name, r.location, r.endpoints # doctest: +ELLIPSIS
         ('paris-arc6+3', Location(name='paris'), frozenset([Endpoint(...),...]))
 
-    Furthermore, a `Ring` is iterable (over its endpoints).
+    Furthermore, a :class:`Ring` is iterable (over its endpoints).
 
         >>> for endpoint in sorted(e.netloc for e in r):
         ...     print endpoint
@@ -228,27 +223,24 @@ class Ring(object):  # pylint: disable=R0903
         True
         >>> Endpoint('http://someotherhost') in r
         False
+
+    When `location` is a `basestring`, it will be converted into a
+    :class:`Location`.
+
+    When elements of `endpoints` are no :class:`Endpoint` instances, they are
+    converted into :class:`Endpoint`.
+
+    :param name: Name of the Ring
+    :type name: `str`
+    :param location: Location of the Ring
+    :type location: :class:`Location` or `str`
+    :param endpoints: Ring endpoints
+    :type endpoints: Iterable of `str` or :class:`Endpoint`
     '''
 
     __slots__ = '_name', '_location', '_endpoints',
 
     def __init__(self, name, location, endpoints):
-        '''Construct a `Ring`
-
-        When `location` is a `basestring`, it will be converted into a
-        `Location`.
-
-        When elements of `endpoints` are no `Endpoint`s, they will be converted
-        into `Endpoint`s. The `Endpoint`s are stored in a `frozenset`.
-
-        :param name: Name of the Ring
-        :type name: `str`
-        :param location: Location of the Ring
-        :type location: `Location` or `str`
-        :param endpoints: Ring endpoints
-        :type endpoints: Iterable of `str` or `Endpoint`
-        '''
-
         self._name = name
 
         self._location = location if not isinstance(location, basestring) \
@@ -294,8 +286,8 @@ class Ring(object):  # pylint: disable=R0903
 class StoragePolicy(object):  # pylint: disable=R0903
     '''Representation of a storage-policy
 
-    A `StoragePolicy` has an index, a set of read-only rings and a set of
-    writable rings::
+    A :class:`StoragePolicy` has an index, a set of read-only rings and a set
+    of writable rings::
 
         >>> ring1 = Ring('paris-arc6+3', 'paris', ['http://paris/arc6+3'])
         >>> ring2 = Ring('london-arc6+3', 'london', ['http://london/arc6+3'])
@@ -308,6 +300,13 @@ class StoragePolicy(object):  # pylint: disable=R0903
         frozenset([Ring(name='paris-arc6+3', location=..., endpoints=...)])
         >>> p.write_set # doctest: +ELLIPSIS
         frozenset([Ring(name='london-arc6+3', location=..., endpoints=...)])
+
+    :param index: Policy index
+    :type index: `int`
+    :param read_set: Set of read-only rings
+    :type read_set: Iterable of :class:`Ring`
+    :param write_set: Set of writeable rings
+    :type write_set: Iterable of :class:`Ring`
     '''
 
     READ = 'read'
@@ -316,16 +315,6 @@ class StoragePolicy(object):  # pylint: disable=R0903
     __slots__ = '_index', '_read_set', '_write_set',
 
     def __init__(self, index, read_set, write_set):
-        '''Construct a `StoragePolicy`
-
-        :param index: Policy index
-        :type index: `int`
-        :param read_set: Set of read-only rings
-        :type read_set: Iterable of `Ring`s
-        :param write_set: Set of writeable rings
-        :type write_set: Iterable of `Ring`s
-        '''
-
         self._index = index
         self._read_set = frozenset(read_set)
         self._write_set = frozenset(write_set)
@@ -362,9 +351,9 @@ class StoragePolicy(object):  # pylint: disable=R0903
     def lookup(self, method, location_hints=None):
         '''Lookup endpoints for a given method
 
-        This method calculates an (ordered) list of sets of `Endpoint`s that can
-        be used to perform a certain type of action, based on an optional list
-        of location preferences.
+        This method calculates an (ordered) list of sets of :class:`Endpoint`
+        that can be used to perform a certain type of action, based on an
+        optional list of location preferences.
 
         A simple example::
 
@@ -409,14 +398,14 @@ class StoragePolicy(object):  # pylint: disable=R0903
             1 ['http://paris1.int/arc6+3', 'http://paris2.int/arc6+3']
             2 ['http://nyc1.int/arc6+3', 'http://nyc2.int/arc6+3']
 
-        :param method: Target action (one of `StoragePolicy.READ` or
-                        `StoragePolicy.WRITE`)
+        :param method: Target action (one of :const:`StoragePolicy.READ` or
+                        :const:`StoragePolicy.WRITE`)
         :type method: `str`
         :param location_hints: List of preferred locations, in descending order
-        :type location_hints: Iterable of `str` or `Location`
+        :type location_hints: Iterable of `str` or :class:`Location`
 
-        :return: List of target `Endpoint`s
-        :rtype: Iterable of `frozenset`s of `Endpoint`s
+        :return: List of target :class:`Endpoint`
+        :rtype: Iterable of `frozenset` of :class:`Endpoint`
 
         :raise ValueError: Invalid `method` passed
         '''
@@ -469,16 +458,16 @@ class ConfigurationError(Exception):
 class Configuration(object):
     '''Representation of a storage-policy configuration
 
-    This is a set of `StoragePolicy` objects with utilities to retrieve one
-    based on index, read them from a configuration file or write them as a new
-    configuration.
+    This is a set of :class:`StoragePolicy` objects with utilities to retrieve
+    one based on index, read them from a configuration file or write them as a
+    new configuration.
 
         >>> conf = Configuration(
         ...     [StoragePolicy(1, [], []), StoragePolicy(2, [], [])])
         >>> conf # doctest: +ELLIPSIS
         Configuration(policies=[StoragePolicy(index=1, ...])
 
-    A `Configuration` is iterable over its policies::
+    A :class:`Configuration` is iterable over its policies::
 
         >>> print list(sorted(policy.index for policy in conf))
         [1, 2]
@@ -491,19 +480,16 @@ class Configuration(object):
         Traceback (most recent call last):
         ...
         ValueError: Unknown policy index: 3
+
+    :param policies: Policies contained in the configuration
+    :type policies: Iterable of :class:`StoragePolicy`
+
+    :raise ValueError: Duplicate policy index found
     '''
 
     __slots__ = '_policies_map',
 
     def __init__(self, policies):
-        '''Construct a `Configuration` from a set of `StoragePolicy`s
-
-        :param policies: Policies contained in the configuration
-        :type policies: Iterable of `StoragePolicy`
-
-        :raise ValueError: Duplicate policy index found
-        '''
-
         self._policies_map = {}
 
         for policy in policies:
@@ -539,7 +525,7 @@ class Configuration(object):
         '''Retrieve a policy based on its index
 
         :param index: Policy to look up
-        :type index: Type of `StoragePolicy.index`
+        :type index: Type of :attr:`StoragePolicy.index`
 
         :raise ValueError: Unknown policy index
         '''
@@ -553,20 +539,20 @@ class Configuration(object):
     def from_stream(cls, stream, filename=None):
         '''Parse a configuration from a stream
 
-        This functions turns a configuration file into a `Configuration`, with
-        some sanity checks along the way. It is based on
-        `ConfigParser.SafeConfigParser`.
+        This functions turns a configuration file into a
+        :class:`Configuration`, with some sanity checks along the way. It is
+        based on :class:`ConfigParser.SafeConfigParser`.
 
-        The `stream` object must have a `readline` method. `filename` will be
-        used in error reporting, if available.
+        The `stream` object must have a :meth:`readline` method. `filename`
+        will be used in error reporting, if available.
 
         :param stream: Stream to parse
         :type stream: File-like object
         :param filename: Filename of input
         :type filename: `str`
 
-        :returns: Parsed `Configuration`
-        :rtype: `Configuration`
+        :returns: Parsed :class:`Configuration`
+        :rtype: :class:`Configuration`
 
         :raise ConfigurationError: Various configurations issues detected
         '''
@@ -668,9 +654,10 @@ class Configuration(object):
         return cls(policies)
 
     def to_stream(self, stream):
-        '''Unparse a `Configuration` into a stream
+        '''Unparse a :class:`Configuration` into a stream
 
-        :param stream: Stream to write the `Configuration` to, in INI-format
+        :param stream: Stream to write the :class:`Configuration` to,
+                        in INI-format
         :type stream: File-like object
         '''
 
