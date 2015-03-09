@@ -18,6 +18,7 @@
 import errno
 import httplib
 import socket
+import sys
 
 from swift_scality_backend.exceptions import InvariantViolation
 
@@ -93,9 +94,18 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
         '''
         def __init__(self, sock, debuglevel=0, strict=0, method=None,
                      buffering=False):
-            httplib.HTTPResponse.__init__(self, sock, debuglevel=debuglevel,
-                                          strict=strict, method=method,
-                                          buffering=buffering)
+            init_args = {
+                'sock': sock,
+                'debuglevel': debuglevel,
+                'strict': strict,
+                'method': method,
+            }
+            if sys.version_info >= (2, 7):
+                init_args.update({
+                    'buffering': buffering,
+                })
+
+            httplib.HTTPResponse.__init__(self, **init_args)
 
             # Fetching in chunks of 1024 bytes seems like a sensible value,
             # since we want to retrieve as little more than the HTTP headers as
