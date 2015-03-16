@@ -18,9 +18,11 @@
 import contextlib
 import os
 import socket
+import sys
 import unittest
 
 import eventlet
+import mock
 
 import swift_scality_backend.http_utils
 
@@ -123,3 +125,23 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
                 self.assertEqual(''.join(rest), data[off:])
         finally:
             server_thread.kill()
+
+
+class TestSomewhatBufferedHTTPConnection(unittest.TestCase):
+
+    @mock.patch('httplib.HTTPResponse.__init__')
+    def test_discard_buffering_arg_on_py26(
+            self, mock_http_response_init):
+
+        kwargs = dict(
+            sock=None, debuglevel=0, strict=0, method=None, buffering=False)
+
+        response_class = \
+            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+        response_obj = response_class(**kwargs)
+
+        if sys.version_info < (2, 7):
+            del kwargs['buffering']
+
+        mock_http_response_init.assert_called_once_with(
+            response_obj, **kwargs)
