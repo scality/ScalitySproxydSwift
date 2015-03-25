@@ -145,3 +145,13 @@ class TestSomewhatBufferedHTTPConnection(unittest.TestCase):
 
         mock_http_response_init.assert_called_once_with(
             response_obj, **kwargs)
+
+    @mock.patch('httplib.HTTPResponse.__init__', mock.Mock())
+    def test_fileno_attr(self):
+        response_class = \
+            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+        response_obj = response_class(sock=None)
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)) \
+                as sock:
+            response_obj.fp = sock
+            self.assertEquals(sock.fileno(), response_obj.fileno())

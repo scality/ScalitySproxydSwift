@@ -111,6 +111,11 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
             # possible.
             self.fp = SomewhatBufferedFileObject(sock, 'rb', 1024)
 
+        if not hasattr(httplib.HTTPResponse, 'fileno'):
+            # py26 compat
+            def fileno(self):
+                return self.fp.fileno()
+
     response_class = HTTPResponse
 
     def __enter__(self):
