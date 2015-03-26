@@ -49,5 +49,5 @@ install_ringsh
 build_ring
 show_ring_status
 install_sproxyd
-set_keepalive ${KEEPALIVE:=On}
+set_keepalive $KEEPALIVE
 test_sproxyd
