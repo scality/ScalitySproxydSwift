@@ -33,8 +33,6 @@ function set_keepalive {
 }
 
 
-git submodule init
-git submodule update
 SUP_ADMIN_LOGIN="myName"
 SUP_ADMIN_PASS="myPass"
 INTERNAL_MGMT_LOGIN="super"
