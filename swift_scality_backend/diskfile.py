@@ -128,7 +128,8 @@ class DiskFileReader(object):
 
     @utils.trace
     def __iter__(self):
-        return self._filesystem.get_object(self._name)
+        headers, data = self._filesystem.get_object(self._name)
+        return data
 
     @utils.trace
     def can_zero_copy_send(self):
@@ -186,7 +187,8 @@ class DiskFileReader(object):
             'range': 'bytes=' + str(start) + '-' + str(stop)
         }
 
-        return self._filesystem.get_object(self._name, headers)
+        headers, data = self._filesystem.get_object(self._name, headers)
+        return data
 
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
