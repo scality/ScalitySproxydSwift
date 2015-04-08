@@ -24,9 +24,7 @@ EOF
 function ubuntu_common {
     wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python;
     sudo easy_install pip
-    if [[ $DEVSTACK_BRANCH == 'master' ]]; then
-        sudo aptitude install -y make
-    elif [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
+    if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
         sudo aptitude install -y gcc python-dev
     fi
 }
