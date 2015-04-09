@@ -1,6 +1,8 @@
 # 55-swift-sproxyd.sh - Devstack extras script to configure s-object with swiftsproxyd driver
 
 function install_sproxyd_driver {
+    # Get the correct sproxyd-client version from the requirements
+    sudo pip install "$(grep 'scality-sproxyd-client' ${WORKSPACE}/requirements.txt)"
     sudo python setup.py install
 }
 

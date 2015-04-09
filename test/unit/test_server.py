@@ -35,7 +35,8 @@ def test_api_compatible():
     ]
 
     swift_server = swift.obj.server.app_factory({})
-    scality_server = swift_scality_backend.server.app_factory({})
+    conf = {'sproxyd_host': 'host1:81'}
+    scality_server = swift_scality_backend.server.app_factory(conf)
 
     def assert_compatible(name, spec1, spec2):
         '''Assert argspecs are compatible'''
@@ -82,7 +83,8 @@ def test_api_compatible():
 
 
 def test_get_diskfile():
-    scality_server = swift_scality_backend.server.app_factory({})
+    conf = {'sproxyd_host': 'host1:81'}
+    scality_server = swift_scality_backend.server.app_factory(conf)
     diskfile = scality_server.get_diskfile('dev', 'partition', 'a', 'c', 'o')
 
     assert isinstance(diskfile, swift_scality_backend.diskfile.DiskFile)

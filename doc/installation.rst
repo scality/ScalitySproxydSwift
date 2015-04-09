@@ -1,5 +1,10 @@
 Installation
 ============
+This package depends on `Scality Sproxyd client`_, a Python client library for Scality Sproxyd connector. It must
+be installed before installing this package.
+
+.. _Scality Sproxyd client: https://github.com/scality/scality-sproxyd-client
+
 1. Install this package:
 
    .. code-block:: console
