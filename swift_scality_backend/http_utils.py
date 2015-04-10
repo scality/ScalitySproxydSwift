@@ -20,6 +20,8 @@ import httplib
 import socket
 import sys
 
+import eventlet
+
 from swift_scality_backend.exceptions import InvariantViolation
 
 
@@ -105,12 +107,29 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
                     'buffering': buffering,
                 })
 
-            httplib.HTTPResponse.__init__(self, **init_args)
+            # Prevent makefile calling by stdlib
+            makefile = socket._socketobject.makefile
+            socket._socketobject.makefile = lambda *_, **_2: None
+            try:
+                httplib.HTTPResponse.__init__(self, **init_args)
+            finally:
+                socket._socketobject.makefile = makefile
+            # Handle eventlet subtlety
+            # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L295
+            if isinstance(sock, eventlet.greenio.base.GreenSocket):
+                real_sock = sock.dup()
+            else:
+                real_sock = sock._sock
 
             # Fetching in chunks of 1024 bytes seems like a sensible value,
             # since we want to retrieve as little more than the HTTP headers as
             # possible.
-            self.fp = SomewhatBufferedFileObject(sock, 'rb', 1024)
+            self.fp = SomewhatBufferedFileObject(real_sock, 'rb', 1024)
+
+            # Eventlet finalizing
+            # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L299
+            if hasattr(real_sock, '_drop') and isinstance(real_sock, eventlet.greenio.base.GreenSocket):
+                real_sock._drop()
 
         if not hasattr(httplib.HTTPResponse, 'fileno'):
             # py26 compat

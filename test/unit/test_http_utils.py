@@ -25,6 +25,7 @@ import eventlet
 import mock
 
 import swift_scality_backend.http_utils
+from . import utils
 
 
 class TestSomewhatBufferedFileObject(unittest.TestCase):
@@ -37,7 +38,7 @@ class TestSomewhatBufferedFileObject(unittest.TestCase):
 
         try:
             yield swift_scality_backend.http_utils.SomewhatBufferedFileObject(
-                sock, 'rb', buffsize)
+                sock._sock, 'rb', buffsize)
         finally:
             sock.close()
 
@@ -125,26 +126,56 @@ class TestSomewhatBufferedHTTPConnection(unittest.TestCase):
     @mock.patch('httplib.HTTPResponse.__init__')
     def test_discard_buffering_arg_on_py26(
             self, mock_http_response_init):
-
-        kwargs = dict(
-            sock=None, debuglevel=0, strict=0, method=None, buffering=False)
-
-        response_class = \
-            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
-        response_obj = response_class(**kwargs)
-
-        if sys.version_info < (2, 7):
-            del kwargs['buffering']
-
-        mock_http_response_init.assert_called_once_with(
-            response_obj, **kwargs)
-
-    @mock.patch('httplib.HTTPResponse.__init__', mock.Mock())
-    def test_fileno_attr(self):
-        response_class = \
-            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
-        response_obj = response_class(sock=None)
         with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)) \
                 as sock:
-            response_obj.fp = sock
+
+            kwargs = dict(
+                sock=sock, debuglevel=0, strict=0, method=None, buffering=False)
+
+            response_class = \
+                swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+            response_obj = response_class(**kwargs)
+
+            if sys.version_info < (2, 7):
+                del kwargs['buffering']
+
+            mock_http_response_init.assert_called_once_with(
+                response_obj, **kwargs)
+
+    def test_fileno_attr(self):
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)) \
+                as sock:
+            response_class = \
+                swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+            response_obj = response_class(sock=sock)
             self.assertEquals(sock.fileno(), response_obj.fileno())
+
+    @mock.patch('socket._socketobject.makefile')
+    def test_makefile_not_called(self, mock_makefile):
+        response_class = \
+            swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
+
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)) \
+                as sock:
+            response_class(sock=sock, debuglevel=0, strict=0, method=None)
+
+        self.assertFalse(mock_makefile.called)
+
+    def test_non_keepalive_conn(self):
+        # https://github.com/scality/ScalitySproxydSwift/issues/93
+
+        content = 'Hello, World!'
+
+        def my_app(env, start_response):
+            start_response('200 OK', [('Content-Type', 'text/plain'),
+                                      ('Connection', 'close')])
+            return [content]
+
+        with utils.WSGIServer(my_app) as server:
+            conn_class = \
+                swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection
+            conn = conn_class(server.ip, server.port)
+            conn.request("GET", "/")
+            conn_sock_fd = conn.sock.fileno()
+            response = conn.getresponse()
+            self.assertEqual(conn_sock_fd, response.fileno())
