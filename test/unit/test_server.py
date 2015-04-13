@@ -17,6 +17,7 @@
 
 import inspect
 
+import mock
 import swift.obj.server
 
 import swift_scality_backend.diskfile
@@ -80,6 +81,17 @@ def test_api_compatible():
             continue
 
         yield check_api_compatible, name
+
+
+@mock.patch('swift_scality_backend.server.SproxydClient')
+def test_setup_with_custom_timeout(mock_sproxyd_client):
+    conf = {'sproxyd_host': 'host1:81', 'sproxyd_proxy_timeout': "10.0",
+            'sproxyd_conn_timeout': "4.1"}
+    swift_scality_backend.server.app_factory(conf)
+
+    mock_sproxyd_client.assert_called_once_with(
+        mock.ANY, sproxyd_read_timeout=10.0, sproxyd_conn_timeout=4.1,
+        logger=mock.ANY)
 
 
 def test_get_diskfile():

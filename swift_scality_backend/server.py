@@ -48,10 +48,19 @@ class ObjectController(swift.obj.server.ObjectController):
         sproxyd_urls = ['http://%s/%s/' % (h, sproxyd_path) for h in
                         swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
 
-        self._filesystem = SproxydClient(sproxyd_urls,
-                                         conf.get('sproxyd_conn_timeout'),
-                                         conf.get('sproxyd_proxy_timeout'),
-                                         self.logger)
+        # We can't pass `None` as value for sproxyd_*_timeout because it will
+        # override the defaults set in SproxydClient
+        kwargs = {}
+
+        sproxyd_conn_timeout = conf.get('sproxyd_conn_timeout')
+        if sproxyd_conn_timeout is not None:
+            kwargs['sproxyd_conn_timeout'] = float(sproxyd_conn_timeout)
+
+        sproxyd_read_timeout = conf.get('sproxyd_proxy_timeout')
+        if sproxyd_read_timeout is not None:
+            kwargs['sproxyd_read_timeout'] = float(sproxyd_read_timeout)
+
+        self._filesystem = SproxydClient(sproxyd_urls, logger=self.logger, **kwargs)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
