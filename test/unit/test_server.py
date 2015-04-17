@@ -17,7 +17,6 @@
 
 import inspect
 
-import mock
 import swift.obj.server
 
 import swift_scality_backend.diskfile
