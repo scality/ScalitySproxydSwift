@@ -54,11 +54,11 @@ class ObjectController(swift.obj.server.ObjectController):
 
         sproxyd_conn_timeout = conf.get('sproxyd_conn_timeout')
         if sproxyd_conn_timeout is not None:
-            kwargs['sproxyd_conn_timeout'] = float(sproxyd_conn_timeout)
+            kwargs['conn_timeout'] = float(sproxyd_conn_timeout)
 
         sproxyd_read_timeout = conf.get('sproxyd_proxy_timeout')
         if sproxyd_read_timeout is not None:
-            kwargs['sproxyd_read_timeout'] = float(sproxyd_read_timeout)
+            kwargs['read_timeout'] = float(sproxyd_read_timeout)
 
         self._filesystem = SproxydClient(sproxyd_urls, logger=self.logger, **kwargs)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
