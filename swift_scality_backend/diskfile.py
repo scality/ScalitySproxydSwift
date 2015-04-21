@@ -18,6 +18,7 @@
 
 import contextlib
 import httplib
+import urllib
 import urlparse
 
 import eventlet
@@ -221,7 +222,14 @@ class DiskFile(object):
     """
 
     def __init__(self, filesystem, account, container, obj, use_splice):
-        self._name = '/'.join((account, container, obj))
+        # We quote separately each part and join parts with a plain forward
+        # slash. Note that `urllib.quote(_, '')` escapes forward slashes.
+        # Escaping `/` in addition to configuring Apache with
+        # `AllowEncodedSlashes NoDecode` makes sure that a Swift object named
+        # 'my//object' is treated by the backend differently than an object
+        # named 'my/object'.
+        self._name = '/'.join(urllib.quote(part, '')
+                              for part in (account, container, obj))
         self._metadata = None
         self._filesystem = filesystem
 
