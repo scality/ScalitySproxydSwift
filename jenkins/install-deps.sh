@@ -1,7 +1,7 @@
 #!/bin/bash -xue
 
 function install_deb {
-    sudo aptitude install -y python-dev libffi-dev
+    sudo aptitude install -y python-dev libffi-dev make
 }
 
 function install_centos {
@@ -30,6 +30,9 @@ function install {
 
     wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python -
     sudo easy_install pip
+    # I can't have Tox 1.9.1 to work with external repository
+    # (scality-sproxyd-client)
+    sudo pip install "tox<=1.9.0"
 }
 
 install
