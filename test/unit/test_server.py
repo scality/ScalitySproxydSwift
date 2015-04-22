@@ -56,7 +56,16 @@ def test_api_compatible():
         assert nargs2 - ndefs2 <= nargs1 - ndefs1, \
             'Incompatible number of non-default args: %r' % name
 
-        assert spec1.args == spec2.args[:nargs1], \
+        # The `policy` arg used to be named  `policy_index` or `policy_idx`
+        # in Swift 2.1 and 2.2. It changed in Swift 2.3.
+        # We rename the arg here to be keep compatibility and have the same
+        # method signature excepted for the name of the `policy` argument.
+        spec1_args = [arg.replace('policy_idx', 'policy').replace(
+            'policy_index', 'policy') for arg in spec1.args]
+        spec2_args = [arg.replace('policy_idx', 'policy').replace(
+            'policy_index', 'policy') for arg in spec2.args]
+
+        assert spec1_args == spec2_args[:nargs1], \
             'Incompatible arg names: %r' % name
 
     def check_api_compatible(name):

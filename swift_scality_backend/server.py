@@ -30,7 +30,7 @@ import swift_scality_backend.diskfile
 import swift_scality_backend.utils
 from scality_sproxyd_client.sproxyd_client import SproxydClient
 
-POLICY_IDX_STUB = object()
+POLICY_STUB = object()
 
 
 class ObjectController(swift.obj.server.ObjectController):
@@ -64,7 +64,7 @@ class ObjectController(swift.obj.server.ObjectController):
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
     def get_diskfile(self, device, partition, account, container, obj,
-                     policy_idx=POLICY_IDX_STUB, **kwargs):
+                     policy=POLICY_STUB, **kwargs):
         """
         Utility method for instantiating a DiskFile object supporting a
         given REST API.
@@ -74,7 +74,7 @@ class ObjectController(swift.obj.server.ObjectController):
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,
-                     policy_index=POLICY_IDX_STUB):
+                     policy=POLICY_STUB):
         """Sends or saves an async update.
 
         :param op: operation performed (ex: 'PUT', or 'DELETE')
@@ -87,7 +87,9 @@ class ObjectController(swift.obj.server.ObjectController):
         :param headers_out: dictionary of headers to send in the container
                             request
         :param objdevice: device name that the object is in
-        :param policy_index: the associated storage policy index
+        :param policy: the associated BaseStoragePolicy instance OR the
+                       associated storage policy index (depends on the Swift
+                       version)
         """
         headers_out['user-agent'] = 'obj-server %s' % os.getpid()
         full_path = '/%s/%s/%s' % (account, container, obj)
