@@ -1,17 +1,13 @@
 #!/bin/bash -xue
 
 function install_deb {
-    sudo aptitude install -y python-dev libffi-dev python-pip;
+    sudo aptitude install -y python-dev libffi-dev
 }
 
 function install_centos {
-    sudo yum -y install python-devel libffi-devel;
-    # pip is not in the standard repo
-    sudo yum -y install epel-release;
-    sudo yum -y install python-pip;
-    # This gets installed automatically in debian because recommended packages
+    # GCC installed automatically in debian because recommended packages
     # Doing that manually in centos.
-    sudo yum -y install gcc;
+    sudo yum -y install python-devel libffi-devel epel-release gcc wget
 }
 
 function is_centos {
@@ -24,14 +20,16 @@ function is_deb {
 
 function install {
     if is_deb; then
-        install_deb;
+        install_deb
     elif is_centos; then
-        install_centos;
+        install_centos
     else
-        echo "Unknown distribution";
-        exit 1;
+        echo "Unknown distribution"
+        exit 1
     fi
-    sudo pip install tox;
+
+    wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python -
+    sudo easy_install pip
 }
 
-install;
+install
