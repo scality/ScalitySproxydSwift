@@ -19,6 +19,7 @@ import functools
 import re
 import unittest
 
+import eventlet
 import nose.plugins.skip
 
 
@@ -70,3 +71,22 @@ def assertRegexpMatches(text, expected_regexp, msg=None):
         msg = msg or "Regexp didn't match"
         msg = '%s: %r not found in %r' % (msg, expected_regexp.pattern, text)
         raise unittest.TestCase.failureException(msg)
+
+
+class WSGIServer(object):
+    """Start a WSGI Web server."""
+    def __init__(self, application):
+        self.application = application
+
+    def __enter__(self):
+        self._server = eventlet.listen(('127.0.0.1', 0))
+        (self.ip, self.port) = self._server.getsockname()
+        self._thread = eventlet.spawn(eventlet.wsgi.server, self._server,
+                                      self.application)
+        return self
+
+    def __exit__(self, exc_ty, exc_val, tb):
+        try:
+            self._thread.kill()
+        finally:
+            self._server.close()
