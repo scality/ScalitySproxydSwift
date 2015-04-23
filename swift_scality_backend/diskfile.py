@@ -312,6 +312,15 @@ class DiskFileWriter(object):
         self.logger.debug("Data successfully written for object : %s", self.safe_path)
         self._filesystem.put_meta(self._name, metadata)
 
+    def commit(self, timestamp):
+        """
+        Perform any operations necessary to mark the object as durable.
+
+        :param timestamp: object put timestamp, an instance of
+                          :class:`~swift.common.utils.Timestamp`
+        """
+        pass
+
 
 class DiskFileReader(object):
     """A simple sproxyd pass-through
