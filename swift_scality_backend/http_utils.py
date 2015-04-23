@@ -20,7 +20,7 @@ import httplib
 import socket
 import sys
 
-import eventlet
+import eventlet.greenio
 
 from swift_scality_backend.exceptions import InvariantViolation
 
@@ -116,7 +116,7 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
                 socket._socketobject.makefile = makefile
             # Handle eventlet subtlety
             # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L295
-            if isinstance(sock, eventlet.greenio.base.GreenSocket):
+            if isinstance(sock, eventlet.greenio.GreenSocket):
                 real_sock = sock.dup()
             else:
                 real_sock = sock._sock
@@ -128,7 +128,7 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
 
             # Eventlet finalizing
             # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L299
-            if hasattr(real_sock, '_drop') and isinstance(real_sock, eventlet.greenio.base.GreenSocket):
+            if hasattr(real_sock, '_drop') and isinstance(real_sock, eventlet.greenio.GreenSocket):
                 real_sock._drop()
 
         if not hasattr(httplib.HTTPResponse, 'fileno'):
