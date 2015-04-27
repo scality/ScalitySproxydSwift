@@ -109,10 +109,6 @@ class Endpoint(object):  # pylint: disable=R0903
 
         self._url = url
 
-    params = None
-    query = None
-    fragment = None
-
     url = property(operator.attrgetter('_url'), doc='Parsed URL')
 
     def __str__(self):
@@ -147,15 +143,6 @@ class Endpoint(object):  # pylint: disable=R0903
     netloc = property(operator.attrgetter('url.netloc'),
                       doc='Endpoint URL netloc')
     path = property(operator.attrgetter('url.path'), doc='Endpoint URL path')
-
-    def geturl(self):
-        '''Get the URL representation of this object
-
-        :return: URL representation of this object
-        :rtype: `str`
-        '''
-
-        return self.url.geturl()
 
 
 class Location(object):  # pylint: disable=R0903

@@ -125,7 +125,7 @@ class ObjectController(swift.obj.server.ObjectController):
             endpoints = policy.lookup(policy.WRITE, location_hints=[])
 
             client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                itertools.chain(*endpoints),
+                (endpoint.url for endpoint in itertools.chain(*endpoints)),
                 self._conn_timeout, self._read_timeout, self.logger)
 
             self._clients[policy_idx] = client
