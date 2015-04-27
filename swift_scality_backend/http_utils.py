@@ -17,6 +17,9 @@
 
 import httplib
 import socket
+import sys
+
+import eventlet.greenio
 
 from scality_sproxyd_client.exceptions import InvariantViolation
 
@@ -92,14 +95,45 @@ class SomewhatBufferedHTTPConnection(httplib.HTTPConnection):
         '''
         def __init__(self, sock, debuglevel=0, strict=0, method=None,
                      buffering=False):
-            httplib.HTTPResponse.__init__(self, sock, debuglevel=debuglevel,
-                                          strict=strict, method=method,
-                                          buffering=buffering)
+            init_args = {
+                'sock': sock,
+                'debuglevel': debuglevel,
+                'strict': strict,
+                'method': method,
+            }
+            if sys.version_info >= (2, 7):
+                init_args.update({
+                    'buffering': buffering,
+                })
+
+            # Prevent makefile calling by stdlib
+            makefile = socket._socketobject.makefile
+            socket._socketobject.makefile = lambda *_, **_2: None
+            try:
+                httplib.HTTPResponse.__init__(self, **init_args)
+            finally:
+                socket._socketobject.makefile = makefile
+            # Handle eventlet subtlety
+            # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L295
+            if isinstance(sock, eventlet.greenio.GreenSocket):
+                real_sock = sock.dup()
+            else:
+                real_sock = sock._sock
 
             # Fetching in chunks of 1024 bytes seems like a sensible value,
             # since we want to retrieve as little more than the HTTP headers as
             # possible.
-            self.fp = SomewhatBufferedFileObject(sock, 'rb', 1024)
+            self.fp = SomewhatBufferedFileObject(real_sock, 'rb', 1024)
+
+            # Eventlet finalizing
+            # https://github.com/eventlet/eventlet/blob/master/eventlet/greenio/base.py#L299
+            if hasattr(real_sock, '_drop') and isinstance(real_sock, eventlet.greenio.GreenSocket):
+                real_sock._drop()
+
+        if not hasattr(httplib.HTTPResponse, 'fileno'):
+            # py26 compat
+            def fileno(self):
+                return self.fp.fileno()
 
     response_class = HTTPResponse
 

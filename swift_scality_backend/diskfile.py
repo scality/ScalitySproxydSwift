@@ -18,7 +18,7 @@
 
 import contextlib
 import httplib
-import urllib
+import urlparse
 
 import eventlet
 import eventlet.green.os
@@ -100,25 +100,16 @@ class DiskFileWriter(object):
         headers = {
             'transfer-encoding': 'chunked'
         }
-        self.logger.debug("DiskFileWriter for %r initialized", name)
+        self.logger.debug("DiskFileWriter for %r initialized", self._name)
 
-        endpoint = self._filesystem.get_next_endpoint()
-        (ipaddr, port) = _endpoint_to_address(endpoint)
-
-        path = '/'.join([
-            endpoint.path.rstrip('/'),
-            urllib.quote(name),
-        ])
-
-        with swift.common.exceptions.ConnectionTimeout(filesystem.conn_timeout):
-            self._conn = swift.common.bufferedhttp.http_connect_raw(
-                ipaddr, port, 'PUT', path, headers)
+        self._conn, self._release_conn = filesystem.get_http_conn_for_put(
+            self._name, headers)
 
     def __repr__(self):
         ret = 'DiskFileWriter(filesystem=%r, object_name=%r)'
         return ret % (self._filesystem, self._name)
 
-    logger = property(lambda self: self._filesystem.logger)
+    logger = property(lambda self: self._filesystem._logger)
 
     def write(self, chunk):
         """Write a chunk of data.
@@ -137,16 +128,33 @@ class DiskFileWriter(object):
                          object
         """
         self._conn.send('0\r\n\r\n')
-        with contextlib.closing(self._conn):
+        try:
             resp = self._conn.getresponse()
+            msg = resp.read()
             if resp.status != 200:
-                msg = resp.read()
                 raise SproxydHTTPException("putting: %s / %s" % (
                     str(resp.status), str(msg)))
+        except Exception:
+            conn, self._conn = self._conn, None
+            try:
+                conn.close()
+            except Exception:
+                self.logger.exception('Failure while closing connection')
+            raise
 
+        self._release_conn()
         metadata['name'] = self._name
-        self.logger.debug("Data successfully written for object: %s", self._name)
+        self.logger.debug("Data successfully written for object : %r", self._name)
         self._filesystem.put_meta(self._name, metadata)
+
+    def commit(self, timestamp):
+        """
+        Perform any operations necessary to mark the object as durable.
+
+        :param timestamp: object put timestamp, an instance of
+                          :class:`~swift.common.utils.Timestamp`
+        """
+        pass
 
 
 class DiskFileReader(object):
@@ -169,11 +177,12 @@ class DiskFileReader(object):
         ret = 'DiskFileReader(filesystem=%r, object_name=%r, use_splice=%r)'
         return ret % (self._filesystem, self._name, self._use_splice)
 
-    logger = property(lambda self: self._filesystem.logger)
+    logger = property(lambda self: self._filesystem._logger)
 
     @utils.trace
     def __iter__(self):
-        return self._filesystem.get_object(self._name)
+        headers, data = self._filesystem.get_object(self._name)
+        return data
 
     @utils.trace
     def can_zero_copy_send(self):
@@ -181,21 +190,17 @@ class DiskFileReader(object):
 
     @utils.trace
     def zero_copy_send(self, wsockfd):
-        endpoint = self._filesystem.get_next_endpoint()
+        object_url = urlparse.urlparse(self._filesystem.get_url_for_object(
+            self._name))
         conn = None
-
-        path = '/'.join([
-            endpoint.path.rstrip('/'),
-            urllib.quote(self._name),
-        ])
 
         with swift.common.exceptions.ConnectionTimeout(
                 self._filesystem.conn_timeout):
             conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
-                endpoint.netloc)
+                object_url.netloc)
 
             try:
-                conn.putrequest('GET', path, skip_host=False)
+                conn.putrequest('GET', object_url.path, skip_host=False)
                 conn.endheaders()
             except:
                 conn.close()
@@ -204,18 +209,16 @@ class DiskFileReader(object):
         with conn:
             resp = conn.getresponse()
 
-            (ipaddr, port) = _endpoint_to_address(endpoint)
-
             if resp.status != httplib.OK:
                 raise SproxydHTTPException(
                     'Unexpected response code: %s' % resp.status,
-                    ipaddr=ipaddr, port=port, path=path,
+                    url=object_url.geturl(),
                     http_status=resp.status, http_reason=resp.reason)
 
             if resp.chunked:
                 raise SproxydHTTPException(
                     'Chunked response not supported',
-                    ipaddr=ipaddr, port=port, path=path,
+                    url=object_url.geturl(),
                     http_status=resp.status, http_reason=resp.reason)
 
             buff = resp.fp.get_buffered()
@@ -237,7 +240,8 @@ class DiskFileReader(object):
             'range': 'bytes=' + str(start) + '-' + str(stop)
         }
 
-        return self._filesystem.get_object(self._name, headers)
+        headers, data = self._filesystem.get_object(self._name, headers)
+        return data
 
     @utils.trace
     def app_iter_ranges(self, ranges, content_type, boundary, size):
@@ -270,7 +274,7 @@ class DiskFile(object):
         self._obj = obj
         self._use_splice = use_splice
 
-    logger = property(lambda self: self._filesystem.logger)
+    logger = property(lambda self: self._filesystem._logger)
 
     def __repr__(self):
         ret = ('DiskFile(filesystem=%r, account=%r, container=%r, obj=%r, '
@@ -283,7 +287,8 @@ class DiskFile(object):
         """Open the file and read the metadata.
 
         This method must populate the _metadata attribute.
-        :raises DiskFileDeleted: if it does not exist
+
+        :raise DiskFileDeleted: if it does not exist
         """
         metadata = self._filesystem.get_meta(self._name)
         if metadata is None:

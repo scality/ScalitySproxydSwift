@@ -45,7 +45,8 @@ def test_api_compatible():
     ]
 
     swift_server = swift.obj.server.app_factory({})
-    scality_server = swift_scality_backend.server.app_factory({})
+    conf = {'sproxyd_host': 'host1:81'}
+    scality_server = swift_scality_backend.server.app_factory(conf)
 
     def assert_compatible(name, spec1, spec2):
         '''Assert argspecs are compatible'''
@@ -65,7 +66,17 @@ def test_api_compatible():
         assert nargs2 - ndefs2 <= nargs1 - ndefs1, \
             'Incompatible number of non-default args: %r' % name
 
-        assert spec1.args == spec2.args[:nargs1], \
+        # The `policy` arg used to be named  `policy_index` or `policy_idx`
+        # in Swift 2.1 and 2.2. It changed in Swift 2.3.
+        # We rename the arg here to be keep compatibility and have the same
+        # method signature excepted for the name of the `policy` argument.
+        spec1_args, spec2_args = spec1.args, spec2.args
+        replace = {'policy_idx': 'policy', 'policy_index': 'policy'}
+        if name in ['get_diskfile', 'async_update']:
+            spec1_args = [replace.get(arg, arg) for arg in spec1.args]
+            spec2_args = [replace.get(arg, arg) for arg in spec2.args]
+
+        assert spec1_args == spec2_args[:nargs1], \
             'Incompatible arg names: %r' % name
 
     def check_api_compatible(name):
@@ -91,8 +102,18 @@ def test_api_compatible():
         yield check_api_compatible, name
 
 
+def test_setup_with_custom_timeout():
+    conf = {'sproxyd_host': 'host1:81', 'sproxyd_proxy_timeout': "10.0",
+            'sproxyd_conn_timeout': "4.1"}
+    obj_serv = swift_scality_backend.server.app_factory(conf)
+
+    assert obj_serv._get_client_for_policy(0).read_timeout == 10.0
+    assert obj_serv._get_client_for_policy(0).conn_timeout == 4.1
+
+
 def test_get_diskfile():
-    scality_server = swift_scality_backend.server.app_factory({})
+    conf = {'sproxyd_host': 'host1:81'}
+    scality_server = swift_scality_backend.server.app_factory(conf)
     diskfile = scality_server.get_diskfile('dev', 'partition', 'a', 'c', 'o')
 
     assert isinstance(diskfile, swift_scality_backend.diskfile.DiskFile)

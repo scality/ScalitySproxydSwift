@@ -19,7 +19,6 @@
 import errno
 import itertools
 import os
-import urlparse
 
 import eventlet
 
@@ -29,11 +28,13 @@ import swift.common.http
 from swift import gettext_ as _
 import swift.obj.server
 
-import swift_scality_backend.diskfile
-import swift_scality_backend.policy_configuration
 import scality_sproxyd_client.sproxyd_client
 
-POLICY_IDX_STUB = object()
+import swift_scality_backend.diskfile
+import swift_scality_backend.policy_configuration
+import swift_scality_backend.utils
+
+POLICY_STUB = object()
 
 
 class ObjectController(swift.obj.server.ObjectController):
@@ -42,7 +43,7 @@ class ObjectController(swift.obj.server.ObjectController):
     def __init__(self, *args, **kwargs):
         self._clients = {}
         self._conn_timeout = None
-        self._proxy_timeout = None
+        self._read_timeout = None
         self._diskfile_mgr = None
         self._policy_configuration = None
 
@@ -53,23 +54,32 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
-        conn_timeout = float(conf.get('sproxyd_conn_timeout', 10))
-        proxy_timeout = float(conf.get('sproxyd_proxy_timeout', 3))
+        # TODO(jordanP) to be changed when we make clear in the Readme we expect
+        # a comma separated list of full sproxyd endpoints.
+        sproxyd_path = conf.get('sproxyd_path', '/proxy/chord').strip('/')
+        sproxyd_urls = ['http://%s/%s/' % (h, sproxyd_path) for h in
+                        swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
 
-        path = conf.get('sproxyd_path', '/proxy/chord')
-        base_path = '/%s/' % path.strip('/')
+        # We can't pass `None` as value for sproxyd_*_timeout because it will
+        # override the defaults set in SproxydClient
+        kwargs = {}
 
-        hosts = [host.strip().split(':')
-                 for host in conf.get('sproxyd_hosts', 'localhost:81').strip(',').split(',')]
-        urls = ['http://%s:%d/%s/' % (ip, int(port), base_path.strip('/'))
-                for (ip, port) in hosts]
+        sproxyd_conn_timeout = conf.get('sproxyd_conn_timeout')
+        if sproxyd_conn_timeout is not None:
+            kwargs['conn_timeout'] = float(sproxyd_conn_timeout)
+
+        sproxyd_read_timeout = conf.get('sproxyd_proxy_timeout')
+        if sproxyd_read_timeout is not None:
+            kwargs['read_timeout'] = float(sproxyd_read_timeout)
 
         self._clients[0] = scality_sproxyd_client.sproxyd_client.SproxydClient(
-            (urlparse.urlparse(url) for url in urls), conn_timeout, proxy_timeout, self.logger)
+            sproxyd_urls, logger=self.logger, **kwargs)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
-        self._conn_timeout = conn_timeout
-        self._proxy_timeout = proxy_timeout
+        self._conn_timeout = float(sproxyd_conn_timeout) \
+            if sproxyd_conn_timeout is not None else None
+        self._read_timeout = float(sproxyd_read_timeout) \
+            if sproxyd_read_timeout is not None else None
 
         sp_path = \
             swift_scality_backend.policy_configuration.DEFAULT_CONFIGURATION_PATH
@@ -115,15 +125,15 @@ class ObjectController(swift.obj.server.ObjectController):
             endpoints = policy.lookup(policy.WRITE, location_hints=[])
 
             client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                (endpoint.url for endpoint in itertools.chain(*endpoints)),
-                self._conn_timeout, self._proxy_timeout, self.logger)
+                itertools.chain(*endpoints),
+                self._conn_timeout, self._read_timeout, self.logger)
 
             self._clients[policy_idx] = client
 
         return self._clients[policy_idx]
 
     def get_diskfile(self, device, partition, account, container, obj,
-                     policy_idx=POLICY_IDX_STUB, **kwargs):
+                     policy=POLICY_STUB, **kwargs):
         """
         Utility method for instantiating a DiskFile object supporting a
         given REST API.
@@ -141,7 +151,7 @@ class ObjectController(swift.obj.server.ObjectController):
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,
-                     policy_index=POLICY_IDX_STUB):
+                     policy=POLICY_STUB):
         """Sends or saves an async update.
 
         :param op: operation performed (ex: 'PUT', or 'DELETE')
@@ -154,7 +164,9 @@ class ObjectController(swift.obj.server.ObjectController):
         :param headers_out: dictionary of headers to send in the container
                             request
         :param objdevice: device name that the object is in
-        :param policy_index: the associated storage policy index
+        :param policy: the associated BaseStoragePolicy instance OR the
+                       associated storage policy index (depends on the Swift
+                       version)
         """
         headers_out['user-agent'] = 'obj-server %s' % os.getpid()
         full_path = '/%s/%s/%s' % (account, container, obj)
