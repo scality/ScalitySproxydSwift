@@ -39,50 +39,6 @@ import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
 
 
-def _endpoint_to_address(endpoint):
-    '''Convert an :class:`urlparse.ParseResult` into a (host, port) pair
-
-    :param endpoint: URL for which to retrieve the address
-    :type endpoint: :class:`urlparse.ParseResult`
-
-    :return: Host and port of endpoint
-    :rtype: `(str, int)`
-    '''
-
-    defaults = {
-        'http': 80,
-        'https': 443,
-    }
-
-    netloc = endpoint.netloc
-
-    if netloc.startswith('['):
-        # Tricky IPv6
-        addr, rest = netloc.split(']', 1)
-        addr = '%s]' % addr
-
-        if not rest:
-            port = defaults[endpoint.scheme]
-        else:
-            if rest[0] != ':':
-                raise ValueError('Unexpected netloc: %r' % netloc)
-
-            port = int(rest[1:])
-    else:
-        parts = netloc.split(':', 1)
-        if len(parts) == 2:
-            addr, rest = parts
-        else:
-            addr, rest = parts[0], ''
-
-        if rest:
-            port = int(rest)
-        else:
-            port = defaults[endpoint.scheme]
-
-    return (addr, port)
-
-
 class DiskFileWriter(object):
     """A simple sproxyd pass-through
 

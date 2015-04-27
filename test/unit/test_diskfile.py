@@ -18,7 +18,6 @@
 import httplib
 import StringIO
 import unittest
-import urlparse
 
 import mock
 import swift.common.exceptions
@@ -26,7 +25,6 @@ import swift.common.utils
 
 from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
-from swift_scality_backend.diskfile import _endpoint_to_address
 from scality_sproxyd_client.exceptions import SproxydHTTPException
 from . import utils
 from .utils import make_sproxyd_client
@@ -251,49 +249,3 @@ class TestDiskFile(unittest.TestCase):
         df.delete("ignored")
 
         mock_del_object.assert_called_once_with('a/c/o')
-
-
-class TestEndpointToAddress(unittest.TestCase):
-    def test_basic_http(self):
-        self.assertEqual(
-            ('localhost', 80),
-            _endpoint_to_address(urlparse.urlparse('http://localhost/path')))
-
-    def test_basic_https(self):
-        self.assertEqual(
-            ('localhost', 443),
-            _endpoint_to_address(urlparse.urlparse('https://localhost/path')))
-
-    def test_http(self):
-        self.assertEqual(
-            ('localhost', 8080),
-            _endpoint_to_address(urlparse.urlparse('http://localhost:8080/path')))
-
-    def test_https(self):
-        self.assertEqual(
-            ('localhost', 4443),
-            _endpoint_to_address(urlparse.urlparse('https://localhost:4443/path')))
-
-    def test_ipv4(self):
-        self.assertEqual(
-            ('127.0.0.1', 81),
-            _endpoint_to_address(urlparse.urlparse('http://127.0.0.1:81/path')))
-
-    def test_ipv6(self):
-        self.assertEqual(
-            ('[fe81::3210:b3ff:fecc:73e6]', 81),
-            _endpoint_to_address(
-                urlparse.urlparse('http://[fe81::3210:b3ff:fecc:73e6]:81/path')))
-
-    def test_ipv6_default_port(self):
-        self.assertEqual(
-            ('[fe81::3210:b3ff:fecc:73e6]', 80),
-            _endpoint_to_address(
-                urlparse.urlparse('http://[fe81::3210:b3ff:fecc:73e6]/path')))
-
-    def test_invalid_ipv6_port(self):
-        self.assertRaises(
-            ValueError,
-            _endpoint_to_address,
-            urlparse.urlparse(
-                'http://[fe81::3210:b3ff:fecc:73e6]abc/path'))
