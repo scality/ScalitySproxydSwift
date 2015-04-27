@@ -139,12 +139,18 @@ class ObjectController(swift.obj.server.ObjectController):
         given REST API.
         """
 
+        if 'policy_idx' in kwargs:
+            if policy is POLICY_STUB:
+                policy = kwargs['policy_idx']
+            else:
+                raise ValueError('Both `policy_idx` and `policy` provided')
+
         # When `policy_idx` is not set (e.g. running Swift 1.13), the fallback
         # policy 0 should be used.
-        if policy_idx is POLICY_IDX_STUB:
-            policy_idx = 0
+        if policy is POLICY_STUB:
+            policy = 0
 
-        client = self._get_client_for_policy(policy_idx)
+        client = self._get_client_for_policy(policy)
 
         return self._diskfile_mgr.get_diskfile(
             client, account, container, obj)
