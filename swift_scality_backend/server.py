@@ -46,6 +46,7 @@ class ObjectController(swift.obj.server.ObjectController):
         self._read_timeout = None
         self._diskfile_mgr = None
         self._policy_configuration = None
+        self._policy_0_urls = None
 
         super(ObjectController, self).__init__(*args, **kwargs)
 
@@ -57,8 +58,9 @@ class ObjectController(swift.obj.server.ObjectController):
         # TODO(jordanP) to be changed when we make clear in the Readme we expect
         # a comma separated list of full sproxyd endpoints.
         sproxyd_path = conf.get('sproxyd_path', '/proxy/chord').strip('/')
-        sproxyd_urls = ['http://%s/%s/' % (h, sproxyd_path) for h in
-                        swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
+        self._policy_0_urls = [
+            'http://%s/%s/' % (h, sproxyd_path)
+            for h in swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
 
         # We can't pass `None` as value for sproxyd_*_timeout because it will
         # override the defaults set in SproxydClient
@@ -72,8 +74,6 @@ class ObjectController(swift.obj.server.ObjectController):
         if sproxyd_read_timeout is not None:
             kwargs['read_timeout'] = float(sproxyd_read_timeout)
 
-        self._clients[0] = scality_sproxyd_client.sproxyd_client.SproxydClient(
-            sproxyd_urls, logger=self.logger, **kwargs)
         self._diskfile_mgr = swift_scality_backend.diskfile.DiskFileManager(conf, self.logger)
 
         self._conn_timeout = float(sproxyd_conn_timeout) \
@@ -113,20 +113,27 @@ class ObjectController(swift.obj.server.ObjectController):
         '''
 
         if policy_idx not in self._clients:
-            if not self._policy_configuration:
-                raise RuntimeError(
-                    'No storage policy configuration found, but request for '
-                    'policy %r' % policy_idx)
+            endpoints = None
 
-            policy = self._policy_configuration.get_policy(policy_idx)
+            if policy_idx == 0:
+                endpoints = self._policy_0_urls
+            else:
+                if not self._policy_configuration:
+                    raise RuntimeError(
+                        'No storage policy configuration found, but request '
+                        'for policy %r' % policy_idx)
 
-            # TODO: Separate read- and write-endpoints
-            # TODO: Location hints
-            endpoints = policy.lookup(policy.WRITE, location_hints=[])
+                policy = self._policy_configuration.get_policy(policy_idx)
+
+                # TODO: Separate read- and write-endpoints
+                # TODO: Location hints
+                endpoints = (
+                    endpoint.url
+                    for endpoint in itertools.chain(
+                        *policy.lookup(policy.WRITE, location_hints=[])))
 
             client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                (endpoint.url for endpoint in itertools.chain(*endpoints)),
-                self._conn_timeout, self._read_timeout, self.logger)
+                endpoints, self._conn_timeout, self._read_timeout, self.logger)
 
             self._clients[policy_idx] = client
 
