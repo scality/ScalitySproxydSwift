@@ -168,52 +168,6 @@ class ObjectController(swift.obj.server.ObjectController):
         return self._diskfile_mgr.get_diskfile(
             client, account, container, obj)
 
-    def async_update(self, op, account, container, obj, host, partition,
-                     contdevice, headers_out, objdevice,
-                     policy=POLICY_STUB):
-        """Sends or saves an async update.
-
-        :param op: operation performed (ex: 'PUT', or 'DELETE')
-        :param account: account name for the object
-        :param container: container name for the object
-        :param obj: object name
-        :param host: host that the container is on
-        :param partition: partition that the container is on
-        :param contdevice: device name that the container is on
-        :param headers_out: dictionary of headers to send in the container
-                            request
-        :param objdevice: device name that the object is in
-        :param policy: the associated BaseStoragePolicy instance OR the
-                       associated storage policy index (depends on the Swift
-                       version)
-        """
-        headers_out['user-agent'] = 'obj-server %s' % os.getpid()
-        full_path = '/%s/%s/%s' % (account, container, obj)
-        if all([host, partition, contdevice]):
-            try:
-                with swift.common.exceptions.ConnectionTimeout(self.conn_timeout):
-                    ip, port = host.rsplit(':', 1)
-                    conn = swift.common.bufferedhttp.http_connect(ip, port,
-                                                                  contdevice, partition, op,
-                                                                  full_path, headers_out)
-                with eventlet.Timeout(self.node_timeout):
-                    response = conn.getresponse()
-                    response.read()
-                    if swift.common.http.is_success(response.status):
-                        return
-                    else:
-                        self.logger.error(_(
-                            'ERROR Container update failed: %(status)d '
-                            'response from %(ip)s:%(port)s/%(dev)s'),
-                            {'status': response.status, 'ip': ip, 'port': port,
-                             'dev': contdevice})
-            except Exception:
-                self.logger.exception(_(
-                    'ERROR container update failed with '
-                    '%(ip)s:%(port)s/%(dev)s'),
-                    {'ip': ip, 'port': port, 'dev': contdevice})
-        # FIXME: For now don't handle async updates
-
     def REPLICATE(*_args, **_kwargs):
         """Handle REPLICATE requests for the Swift Object Server.
 

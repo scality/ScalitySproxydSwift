@@ -362,3 +362,6 @@ class DiskFileManager(object):
     def get_diskfile(self, sproxyd_client, account, container, obj):
         return DiskFile(sproxyd_client, account, container, obj,
                         use_splice=self.use_splice)
+
+    def pickle_async_update(self, *args, **kwargs):
+        pass
