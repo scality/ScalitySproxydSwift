@@ -150,6 +150,12 @@ class ObjectController(swift.obj.server.ObjectController):
         if policy is POLICY_STUB:
             policy = 0
 
+        # In Swift 2.3 policies are no longer defined by an integer, but by a
+        # value of type `swift.common.storage_policy.BaseStoragePolicy`, which
+        # has an `idx` attribute.
+        # We rely on the integer only, for now.
+        policy = getattr(policy, 'idx', policy)
+
         client = self._get_client_for_policy(policy)
 
         return self._diskfile_mgr.get_diskfile(
