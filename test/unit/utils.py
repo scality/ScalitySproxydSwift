@@ -23,6 +23,8 @@ import eventlet
 import mock
 import nose.plugins.skip
 
+from swift_scality_backend.diskfile import ClientCollection
+
 from scality_sproxyd_client.sproxyd_client import SproxydClient
 
 
@@ -76,8 +78,8 @@ def assertRegexpMatches(text, expected_regexp, msg=None):
         raise unittest.TestCase.failureException(msg)
 
 
-def make_sproxyd_client(endpoints=None, conn_timeout=None,
-                        read_timeout=None, logger=None):
+def make_client_collection(endpoints=None, conn_timeout=None,
+                           read_timeout=None, logger=None):
     '''Construct an `SproxydClient` instance using default values.'''
 
     def maybe(default, value):
@@ -88,9 +90,11 @@ def make_sproxyd_client(endpoints=None, conn_timeout=None,
     read_timeout = maybe(3.0, read_timeout)
     logger = maybe(mock.Mock(), logger)
 
-    return SproxydClient(
+    client = SproxydClient(
         endpoints=endpoints, conn_timeout=conn_timeout,
         read_timeout=read_timeout, logger=logger)
+
+    return ClientCollection(read_clients=[client], write_clients=[client])
 
 
 class WSGIServer(object):

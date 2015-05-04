@@ -107,8 +107,8 @@ def test_setup_with_custom_timeout():
             'sproxyd_conn_timeout': "4.1"}
     obj_serv = swift_scality_backend.server.app_factory(conf)
 
-    assert obj_serv._get_client_for_policy(0).read_timeout == 10.0
-    assert obj_serv._get_client_for_policy(0).conn_timeout == 4.1
+    assert obj_serv._get_client_for_policy(0).read_clients[0].read_timeout == 10.0
+    assert obj_serv._get_client_for_policy(0).read_clients[0].conn_timeout == 4.1
 
 
 def test_get_diskfile():
@@ -217,4 +217,4 @@ class TestStoragePolicySupport(unittest.TestCase):
             self.assertEqual(frozenset([
                 urlparse.urlparse('http://localhost:8080/chord'),
                 urlparse.urlparse('http://otherhost:8080/chord'),
-            ]), df._filesystem._alive)
+            ]), df._client_collection.read_clients[0]._alive)

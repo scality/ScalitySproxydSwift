@@ -17,7 +17,6 @@
 """ Scality Sproxyd Object Server for Swift """
 
 import errno
-import itertools
 import os
 
 import eventlet
@@ -47,6 +46,7 @@ class ObjectController(swift.obj.server.ObjectController):
         self._diskfile_mgr = None
         self._policy_configuration = None
         self._policy_0_urls = None
+        self._location_preferences = None
 
         super(ObjectController, self).__init__(*args, **kwargs)
 
@@ -100,6 +100,13 @@ class ObjectController(swift.obj.server.ObjectController):
                     'from %r', sp_path)
                 raise
 
+        location_preferences = conf.get('scality_location_preferences')
+        if location_preferences is None:
+            self._location_preferences = None
+        else:
+            self._location_preferences = \
+                swift_scality_backend.utils.split_list(location_preferences)
+
     def _get_client_for_policy(self, policy_idx):
         '''Retrieve or create an Sproxyd client for a given storage policy
 
@@ -113,10 +120,17 @@ class ObjectController(swift.obj.server.ObjectController):
         '''
 
         if policy_idx not in self._clients:
-            endpoints = None
+            collection = None
 
             if policy_idx == 0:
                 endpoints = self._policy_0_urls
+
+                client = scality_sproxyd_client.sproxyd_client.SproxydClient(
+                    endpoints, self._conn_timeout, self._read_timeout,
+                    self.logger)
+
+                collection = swift_scality_backend.diskfile.ClientCollection(
+                    read_clients=[client], write_clients=[client])
             else:
                 if not self._policy_configuration:
                     raise RuntimeError(
@@ -125,17 +139,38 @@ class ObjectController(swift.obj.server.ObjectController):
 
                 policy = self._policy_configuration.get_policy(policy_idx)
 
-                # TODO: Separate read- and write-endpoints
-                # TODO: Location hints
-                endpoints = (
-                    endpoint.url
-                    for endpoint in itertools.chain(
-                        *policy.lookup(policy.WRITE, location_hints=[])))
+                clients = {}
 
-            client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                endpoints, self._conn_timeout, self._read_timeout, self.logger)
+                read_clients = []
+                for endpoints in policy.lookup(
+                        policy.READ, location_hints=self._location_preferences):
+                    if endpoints in clients:
+                        read_clients.append(clients[endpoints])
+                    else:
+                        client = scality_sproxyd_client.sproxyd_client.SproxydClient(
+                            (endpoint.url for endpoint in endpoints),
+                            self._conn_timeout, self._read_timeout, self.logger)
+                        clients[endpoints] = client
 
-            self._clients[policy_idx] = client
+                        read_clients.append(client)
+
+                write_clients = []
+                for endpoints in policy.lookup(
+                        policy.WRITE, location_hints=self._location_preferences):
+                    if endpoints in clients:
+                        write_clients.append(clients[endpoints])
+                    else:
+                        client = scality_sproxyd_client.sproxyd_client.SproxydClient(
+                            (endpoint.url for endpoint in endpoints),
+                            self._conn_timeout, self._read_timeout, self.logger)
+                        clients[endpoints] = client
+
+                        write_clients.append(client)
+
+                collection = swift_scality_backend.diskfile.ClientCollection(
+                    read_clients=read_clients, write_clients=write_clients)
+
+            self._clients[policy_idx] = collection
 
         return self._clients[policy_idx]
 
@@ -163,10 +198,10 @@ class ObjectController(swift.obj.server.ObjectController):
         # We rely on the integer only, for now.
         policy = getattr(policy, 'idx', policy)
 
-        client = self._get_client_for_policy(policy)
+        client_collection = self._get_client_for_policy(policy)
 
         return self._diskfile_mgr.get_diskfile(
-            client, account, container, obj)
+            client_collection, account, container, obj)
 
     def REPLICATE(*_args, **_kwargs):
         """Handle REPLICATE requests for the Swift Object Server.
