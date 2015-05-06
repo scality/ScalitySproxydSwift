@@ -2,7 +2,10 @@
 
 function install_sproxyd_driver {
     # Get the correct sproxyd-client version from the requirements
-    sudo pip install "$(grep 'scality-sproxyd-client' ${WORKSPACE}/requirements.txt)"
+    local scal_sproxyd_client=$(grep 'scality-sproxyd-client' ${WORKSPACE}/requirements.txt)
+    if [[ -n "$scal_sproxyd_client" ]]; then
+        sudo pip install "$scal_sproxyd_client"
+    fi
     sudo python setup.py install
 }
 
