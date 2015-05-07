@@ -1,12 +1,11 @@
 #!/bin/bash -xue
 
 
-function amend_apache_conf {
-    local option=$1
+function set_keepalive {
     local filepath
     for filepath in "/etc/apache2/apache2.conf" "/etc/httpd/conf/httpd.conf"; do
         if  [[ -f $filepath ]]; then
-            sudo sed -i'.sedbck' "s/KeepAlive O.*/KeepAlive ${option}/" $filepath
+            sudo sed -i'.sedbck' "s/KeepAlive O.*/KeepAlive ${KEEPALIVE}/" $filepath
             return 0
         fi
     done
@@ -26,9 +25,8 @@ function restart_apache {
     return 1
 }
 
-function set_keepalive {
-    local option=$1
-    amend_apache_conf $option
+function set_keep_alive_and_restart {
+    set_keepalive
     restart_apache
 }
 
@@ -47,5 +45,5 @@ install_ringsh
 build_ring
 show_ring_status
 install_sproxyd
-set_keepalive $KEEPALIVE
+set_keep_alive_and_restart
 test_sproxyd
