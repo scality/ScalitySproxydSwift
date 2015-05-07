@@ -185,6 +185,14 @@ class TestDiskFileWriter(unittest.TestCase):
 class TestDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFile"""
 
+    def test_init_quotes_object_path(self):
+        account, container, obj = 'a', '@/', '/ob/j'
+
+        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
+        df = DiskFile(sproxyd_client, account, container, obj,
+                      use_splice=False)
+        self.assertEqual('a/%40%2F/%2Fob%2Fj', df._name)
+
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
