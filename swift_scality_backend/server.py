@@ -17,14 +17,10 @@
 """ Scality Sproxyd Object Server for Swift """
 
 import errno
-import os
-
-import eventlet
 
 import swift.common.bufferedhttp
 import swift.common.exceptions
 import swift.common.http
-from swift import gettext_ as _
 import swift.obj.server
 
 import scality_sproxyd_client.sproxyd_client

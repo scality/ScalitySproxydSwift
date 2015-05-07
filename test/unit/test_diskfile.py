@@ -28,6 +28,7 @@ from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
 from swift_scality_backend.diskfile import ClientCollection
 from scality_sproxyd_client.exceptions import SproxydHTTPException
+from scality_sproxyd_client.sproxyd_client import SproxydClient
 from . import utils
 from .utils import make_client_collection
 
@@ -181,6 +182,14 @@ class TestDiskFileWriter(unittest.TestCase):
 
 class TestDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFile"""
+
+    def test_init_quotes_object_path(self):
+        account, container, obj = 'a', '@/', '/ob/j'
+
+        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
+        df = DiskFile(sproxyd_client, account, container, obj,
+                      use_splice=False, logger=logging.root)
+        self.assertEqual('a/%40%2F/%2Fob%2Fj', df._name)
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
