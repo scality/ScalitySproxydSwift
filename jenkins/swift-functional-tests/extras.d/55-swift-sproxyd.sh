@@ -41,15 +41,14 @@ write = paris-arc
 EOF
 }
 
-function sylimk_ring_files {
+function symlink_ring_files {
     ln -s ${SWIFT_CONF_DIR}/object.ring.gz ${SWIFT_CONF_DIR}/object-1.ring.gz
-    ln -s ${SWIFT_CONF_DIR}/container.ring.gz ${SWIFT_CONF_DIR}/container-1.ring.gz
 }
 
 function enable_storage_policies {
     amend_swift_conf
     create_storage_policies_conf
-    sylimk_ring_files
+    symlink_ring_files
 }
 
 if is_service_enabled s-object; then
