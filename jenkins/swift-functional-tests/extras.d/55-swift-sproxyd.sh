@@ -23,6 +23,34 @@ function enable_sproxyd_driver {
     done
 }
 
+function amend_swift_conf {
+    local swift_conf=${SWIFT_CONF_DIR}/swift.conf
+    iniset ${swift_conf} storage-policy:1 name Policy-1
+}
+
+function create_storage_policies_conf {
+    cat <<EOF >${SWIFT_CONF_DIR}/scality-storage-policies.ini
+[ring:paris-arc]
+location = paris
+sproxyd_endpoints = http://127.0.0.1:81/proxy/arc
+
+[storage-policy:1]
+read = paris-arc
+write = paris-arc
+
+EOF
+}
+
+function symlink_ring_files {
+    ln -s ${SWIFT_CONF_DIR}/object.ring.gz ${SWIFT_CONF_DIR}/object-1.ring.gz
+}
+
+function enable_storage_policies {
+    amend_swift_conf
+    create_storage_policies_conf
+    symlink_ring_files
+}
+
 if is_service_enabled s-object; then
     if [[ "$1" == "stack" && "$2" == "install" ]]; then
         echo_summary "Post-config hook : install swift-sproxyd."
@@ -31,5 +59,6 @@ if is_service_enabled s-object; then
     if [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Post-config hook : enable swift-sproxyd."
         enable_sproxyd_driver
+        enable_storage_policies
     fi
 fi
