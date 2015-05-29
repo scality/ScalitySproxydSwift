@@ -115,6 +115,14 @@ class ObjectController(swift.obj.server.ObjectController):
         :raise RuntimeError: No policies configured
         '''
 
+        sproxyd_client_kwargs = {
+            'logger': self.logger,
+        }
+        if self._conn_timeout is not None:
+            sproxyd_client_kwargs['conn_timeout'] = self._conn_timeout
+        if self._read_timeout is not None:
+            sproxyd_client_kwargs['read_timeout'] = self._read_timeout
+
         if policy_idx not in self._clients:
             collection = None
 
@@ -122,8 +130,7 @@ class ObjectController(swift.obj.server.ObjectController):
                 endpoints = self._policy_0_urls
 
                 client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                    endpoints, self._conn_timeout, self._read_timeout,
-                    self.logger)
+                    endpoints, **sproxyd_client_kwargs)
 
                 collection = swift_scality_backend.diskfile.ClientCollection(
                     read_clients=[client], write_clients=[client])
@@ -145,7 +152,7 @@ class ObjectController(swift.obj.server.ObjectController):
                     else:
                         client = scality_sproxyd_client.sproxyd_client.SproxydClient(
                             (endpoint.url for endpoint in endpoints),
-                            self._conn_timeout, self._read_timeout, self.logger)
+                            **sproxyd_client_kwargs)
                         clients[endpoints] = client
 
                         read_clients.append(client)
