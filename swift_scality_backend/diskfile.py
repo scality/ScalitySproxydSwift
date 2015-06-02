@@ -48,7 +48,12 @@ class DiskFileWriter(object):
     requests. Serves as the context manager object for DiskFile's create()
     method.
 
+    :param client_collection: Client collection to use to perform operations
+    :type client_collection: `swift_scality_backend.http_utils.ClientCollection`
     :param name: standard object name
+    :type name: `str`
+    :param logger: Logger to use within the `DiskFileWriter`
+    :type logger: `logging.Logger`
     """
     def __init__(self, client_collection, name, logger):
         self._client_collection = client_collection
@@ -225,10 +230,16 @@ class DiskFileReader(object):
 class DiskFile(object):
     """A simple sproxyd pass-through
 
+    :param client_collection: Client collection to use to perform operations
+    :type client_collection: `swift_scality_backend.http_utils.ClientCollection`
     :param account: account name for the object
+    :type account: `str`
     :param container: container name for the object
+    :type container: `str`
     :param obj: object name for the object
+    :type obj: `str`
     :param use_splice: if true, use zero-copy splice() to send data
+    :type use_splice: `bool`
     """
 
     def __init__(self, client_collection, account, container, obj, use_splice,
@@ -343,122 +354,6 @@ class DiskFile(object):
                           called externally only by the `ObjectController`
         """
         self.client_collection.get_write_client().del_object(self._name)
-
-
-class NoClientAvailable(RuntimeError):
-    '''Exception raised when no client with alive endpoints is available'''
-
-
-class ClientCollection(object):
-    '''A collection of back-end connections'''
-
-    def __init__(self, read_clients, write_clients):
-        # It's more list rather than tuple, but there's no persistent list in
-        # Python
-        self._read_clients = tuple(read_clients)
-        self._write_clients = tuple(write_clients)
-
-    read_clients = property(operator.attrgetter('_read_clients'))
-    write_clients = property(operator.attrgetter('_write_clients'))
-
-    def __repr__(self):
-        return 'ClientCollection(read_clients=%r, write_clients=%r)' % \
-            (self.read_clients, self.write_clients)
-
-    def __eq__(self, other):
-        if isinstance(other, ClientCollection):
-            return all([
-                self.read_clients == other.read_clients,
-                self.write_clients == other.write_clients,
-            ])
-        else:
-            return NotImplemented
-
-    def __ne__(self, other):
-        equal = self.__eq__(other)
-
-        if equal is NotImplemented:
-            return NotImplemented
-        else:
-            return not equal
-
-    def __hash__(self):
-        return hash((self.read_clients, self.write_clients))
-
-    @staticmethod
-    def _get_client(clients):
-        '''Retrieve a client with alive endpoints from a collection of clients
-
-        :param clients: Client collection
-        :type clients: iterable of `scality_sproxyd_client.sproxyd_client.SproxydClient`
-
-        :return: A client with alive endpoints
-        :rtype: `scality_sproxyd_client.sproxyd_client.SproxydClient`
-
-        :raise NoClientAvailable: No client with available endpoints found
-        '''
-
-        for client in clients:
-            if client.has_alive_endpoints:
-                return client
-
-        raise NoClientAvailable('No alive endpoints available')
-
-    def get_read_client(self):
-        '''Return a client at which read operations can be performed
-
-        :return: A client usable for read operations
-        :rtype: `scality_sproxyd_client.sproxyd_client.SproxydClient`
-
-        :raise NoClientAvailable: No client with available endpoints found
-        '''
-
-        return self._get_client(self.read_clients)
-
-    def get_write_client(self):
-        '''Return a client at which write operations can be performed
-
-        :return: A client usable for write operations
-        :rtype: `scality_sproxyd_client.sproxyd_client.SproxydClient`
-
-        :raise NoClientAvailable: No client with available endpoints found
-        '''
-
-        return self._get_client(self.write_clients)
-
-    def try_read(self, fn):
-        '''Attempt a read operation and fallback to write endpoints on 404
-
-        This utility method attempts to retrieve a read endpoint client, and
-        call the given function. If it raises an `SproxydHTTPException` with
-        `http_status` 404, it falls back to looking up a write endpoint and
-        retry the action.
-
-        Other exceptions are passed through.
-
-        :param fn: Callable to attempt the operation
-        :type fn: `callable` which takes a `scality_sproxyd_client.sproxyd_client.SproxydClient`
-
-        :return: Result of `fn`
-
-        :raise NoClientAvailable: No client with alive endpoints available
-        '''
-
-        try:
-            client = self.get_read_client()
-        except NoClientAvailable:
-            pass
-        else:
-            try:
-                return fn(client)
-            except SproxydHTTPException as exc:
-                if exc.http_status == 404:
-                    pass
-                else:
-                    raise
-
-        client = self.get_write_client()
-        return fn(client)
 
 
 class DiskFileManager(object):

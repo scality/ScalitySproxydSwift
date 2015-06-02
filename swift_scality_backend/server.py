@@ -26,6 +26,7 @@ import swift.obj.server
 import scality_sproxyd_client.sproxyd_client
 
 import swift_scality_backend.diskfile
+import swift_scality_backend.http_utils
 import swift_scality_backend.policy_configuration
 import swift_scality_backend.utils
 
@@ -115,6 +116,10 @@ class ObjectController(swift.obj.server.ObjectController):
         :raise RuntimeError: No policies configured
         '''
 
+        # Static arguments to pass to the `SproxydClient` constructor.
+        # Note we can only add `conn_timeout` and `read_timeout` when configured
+        # (i.e. not pass `None` to the constructor) because of the default
+        # values in the constructor arguments.
         sproxyd_client_kwargs = {
             'logger': self.logger,
         }
@@ -123,16 +128,19 @@ class ObjectController(swift.obj.server.ObjectController):
         if self._read_timeout is not None:
             sproxyd_client_kwargs['read_timeout'] = self._read_timeout
 
+        # Set up a new client collection when we didn't create one before,
+        # otherwise just return the old one
         if policy_idx not in self._clients:
             collection = None
 
+            # 'Default' (old-style) configuration (no custom storage policy)
             if policy_idx == 0:
                 endpoints = self._policy_0_urls
 
                 client = scality_sproxyd_client.sproxyd_client.SproxydClient(
                     endpoints, **sproxyd_client_kwargs)
 
-                collection = swift_scality_backend.diskfile.ClientCollection(
+                collection = swift_scality_backend.http_utils.ClientCollection(
                     read_clients=[client], write_clients=[client])
             else:
                 if not self._policy_configuration:
@@ -142,12 +150,23 @@ class ObjectController(swift.obj.server.ObjectController):
 
                 policy = self._policy_configuration.get_policy(policy_idx)
 
+                # Clients in a write set of a policy are assumed to be readable
+                # as well (although potentially with a lower precedence). To
+                # ensure we only create a single `SproxydClient` for a given set
+                # of endpoints (to reduce the number of connections to those
+                # endpoints, and not to duplicate the failure detector requests
+                # sent to it), this map caches `SproxydClient`s based on their
+                # set of endpoints for re-use.
                 clients = {}
 
+                # Iterate over all *read* endpoints and construct
+                # `SproxydClient` instances accordingly, or re-use an existing
+                # one.
                 read_clients = []
                 for endpoints in policy.lookup(
                         policy.READ, location_hints=self._location_preferences):
                     if endpoints in clients:
+                        # This should only happen for very funky configurations
                         read_clients.append(clients[endpoints])
                     else:
                         client = scality_sproxyd_client.sproxyd_client.SproxydClient(
@@ -157,6 +176,9 @@ class ObjectController(swift.obj.server.ObjectController):
 
                         read_clients.append(client)
 
+                # Iterate over all *write* endpoints and construct
+                # `SproxydClient` instances accordingly, or re-use an existing
+                # one.
                 write_clients = []
                 for endpoints in policy.lookup(
                         policy.WRITE, location_hints=self._location_preferences):
@@ -170,9 +192,10 @@ class ObjectController(swift.obj.server.ObjectController):
 
                         write_clients.append(client)
 
-                collection = swift_scality_backend.diskfile.ClientCollection(
+                collection = swift_scality_backend.http_utils.ClientCollection(
                     read_clients=read_clients, write_clients=write_clients)
 
+            # Cache the collection for this policy
             self._clients[policy_idx] = collection
 
         return self._clients[policy_idx]

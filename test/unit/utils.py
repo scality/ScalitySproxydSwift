@@ -23,7 +23,7 @@ import eventlet
 import mock
 import nose.plugins.skip
 
-from swift_scality_backend.diskfile import ClientCollection
+from swift_scality_backend.http_utils import ClientCollection
 
 from scality_sproxyd_client.sproxyd_client import SproxydClient
 
