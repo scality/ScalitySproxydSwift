@@ -16,11 +16,10 @@
 """Tests for swift_scality_backend.diskfile"""
 
 import httplib
+import logging
 import StringIO
 import unittest
 
-import eventlet
-import eventlet.wsgi
 import mock
 import swift.common.exceptions
 import swift.common.utils
@@ -28,8 +27,10 @@ import swift.common.utils
 from swift_scality_backend.diskfile import DiskFileWriter, \
     DiskFileReader, DiskFile, DiskFileManager
 from scality_sproxyd_client.exceptions import SproxydHTTPException
+from swift_scality_backend.http_utils import ClientCollection
 from scality_sproxyd_client.sproxyd_client import SproxydClient
 from . import utils
+from .utils import make_client_collection
 
 
 NEW_SPLICE = 'new_splice'
@@ -43,9 +44,6 @@ except ImportError:
         SPLICE = OLD_SPLICE
     else:
         SPLICE = NO_SPLICE_AT_ALL
-
-
-eventlet.monkey_patch()
 
 
 class FakeHTTPResp(httplib.HTTPResponse):
@@ -132,10 +130,10 @@ class TestDiskFileManager(unittest.TestCase):
         self._test_init_splice_unavailable()
 
     def test_get_diskfile(self):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
+        client_collection = make_client_collection()
         dfm = DiskFileManager({}, mock.Mock())
 
-        diskfile = dfm.get_diskfile(sproxyd_client, 'a', 'c', 'o')
+        diskfile = dfm.get_diskfile(client_collection, 'a', 'c', 'o')
         self.assertTrue(isinstance(diskfile, DiskFile))
 
 
@@ -145,9 +143,9 @@ class TestDiskFileWriter(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
                 return_value=(None, None))
     def test_init(self, mock_http):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
+        client_collection = make_client_collection()
         # Note the white space, to test proper URL encoding
-        DiskFileWriter(sproxyd_client, 'ob j')
+        DiskFileWriter(client_collection, 'ob j', logger=logging.root)
 
         expected_header = {'transfer-encoding': 'chunked'}
         mock_http.assert_called_once_with('ob j', expected_header)
@@ -155,8 +153,8 @@ class TestDiskFileWriter(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
                 return_value=(FakeHTTPConn(resp_status=404), None))
     def test_put_with_404_response(self, mock_http):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        dfw = DiskFileWriter(sproxyd_client, 'obj')
+        client_collection = make_client_collection()
+        dfw = DiskFileWriter(client_collection, 'obj', logger=logging.root)
 
         fake_http_conn = mock_http.return_value[0]
         msg = r'.*404 / %s.*' % fake_http_conn.getresponse().read()
@@ -168,8 +166,8 @@ class TestDiskFileWriter(unittest.TestCase):
                 return_value=(FakeHTTPConn(), mock.Mock()))
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_put_with_200_response(self, mock_put_meta, mock_http):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        dfw = DiskFileWriter(sproxyd_client, 'obj')
+        client_collection = make_client_collection()
+        dfw = DiskFileWriter(client_collection, 'obj', logger=logging.root)
 
         dfw.put({'meta1': 'val'})
 
@@ -190,14 +188,15 @@ class TestDiskFile(unittest.TestCase):
 
         sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
         df = DiskFile(sproxyd_client, account, container, obj,
-                      use_splice=False)
+                      use_splice=False, logger=logging.root)
         self.assertEqual('a/%40%2F/%2Fob%2Fj', df._name)
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         self.assertRaises(swift.common.exceptions.DiskFileDeleted, df.open)
         mock_get_meta.assert_called_once_with('a/c/o')
@@ -205,16 +204,18 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_open(self, mock_get_meta):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         df.open()
 
         self.assertEqual({'name': 'o'}, df._metadata)
 
     def test_get_metadata_when_diskfile_not_open(self):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
                           df.get_metadata)
@@ -222,16 +223,18 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
     def test_read_metadata(self, mock_get_meta):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         metadata = df.read_metadata()
 
         self.assertEqual({'name': 'o'}, metadata)
 
     def test_reader(self):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         reader = df.reader()
         self.assertTrue(isinstance(reader, DiskFileReader))
@@ -239,16 +242,18 @@ class TestDiskFile(unittest.TestCase):
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
                 return_value=(FakeHTTPConn(), mock.Mock()))
     def test_create(self, mock_http):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         with df.create() as writer:
             self.assertTrue(isinstance(writer, DiskFileWriter))
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_write_metadata(self, mock_put_meta):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         df.write_metadata({'k': 'v'})
 
@@ -256,9 +261,37 @@ class TestDiskFile(unittest.TestCase):
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.del_object')
     def test_delete(self, mock_del_object):
-        sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, 'a', 'c', 'o', use_splice=False)
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
 
         df.delete("ignored")
 
         mock_del_object.assert_called_once_with('a/c/o')
+
+
+class TestClientCollection(unittest.TestCase):
+    '''Tests for `swift_scality_backend.diskfile.ClientCollection`'''
+
+    def test_constructor(self):
+        def make_iter():
+            cell = [False]
+
+            def iter():
+                yield ()
+                cell[0] = True
+                yield ()
+
+            return cell, iter()
+
+        read_set_cell, read_set = make_iter()
+        write_set_cell, write_set = make_iter()
+
+        ClientCollection(read_set, write_set)
+
+        self.assertTrue(read_set_cell[0])
+        self.assertTrue(write_set_cell[0])
+
+    def test_hash(self):
+        col = ClientCollection([None, None], [None])
+        hash(col)

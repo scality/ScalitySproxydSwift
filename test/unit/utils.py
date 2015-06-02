@@ -20,7 +20,12 @@ import re
 import unittest
 
 import eventlet
+import mock
 import nose.plugins.skip
+
+from swift_scality_backend.http_utils import ClientCollection
+
+from scality_sproxyd_client.sproxyd_client import SproxydClient
 
 
 def skipIf(condition, reason):
@@ -71,6 +76,25 @@ def assertRegexpMatches(text, expected_regexp, msg=None):
         msg = msg or "Regexp didn't match"
         msg = '%s: %r not found in %r' % (msg, expected_regexp.pattern, text)
         raise unittest.TestCase.failureException(msg)
+
+
+def make_client_collection(endpoints=None, conn_timeout=None,
+                           read_timeout=None, logger=None):
+    '''Construct an `SproxydClient` instance using default values.'''
+
+    def maybe(default, value):
+        return value if value is not None else default
+
+    endpoints = maybe(['http://localhost:81/proxy/chord/'], endpoints)
+    conn_timeout = maybe(10.0, conn_timeout)
+    read_timeout = maybe(3.0, read_timeout)
+    logger = maybe(mock.Mock(), logger)
+
+    client = SproxydClient(
+        endpoints=endpoints, conn_timeout=conn_timeout,
+        read_timeout=read_timeout, logger=logger)
+
+    return ClientCollection(read_clients=[client], write_clients=[client])
 
 
 class WSGIServer(object):

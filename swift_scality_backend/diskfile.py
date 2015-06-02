@@ -18,6 +18,7 @@
 
 import contextlib
 import httplib
+import operator
 import urllib
 import urlparse
 
@@ -47,26 +48,33 @@ class DiskFileWriter(object):
     requests. Serves as the context manager object for DiskFile's create()
     method.
 
-    :param filesystem: internal file system object to use
+    :param client_collection: Client collection to use to perform operations
+    :type client_collection: `swift_scality_backend.http_utils.ClientCollection`
     :param name: standard object name
+    :type name: `str`
+    :param logger: Logger to use within the `DiskFileWriter`
+    :type logger: `logging.Logger`
     """
-    def __init__(self, filesystem, name):
-        self._filesystem = filesystem
+    def __init__(self, client_collection, name, logger):
+        self._client_collection = client_collection
         self._name = name
+        self._logger = logger
+
         self._upload_size = 0
         headers = {
             'transfer-encoding': 'chunked'
         }
         self.logger.debug("DiskFileWriter for %r initialized", self._name)
 
-        self._conn, self._release_conn = filesystem.get_http_conn_for_put(
+        client = self._client_collection.get_write_client()
+        self._conn, self._release_conn = client.get_http_conn_for_put(
             self._name, headers)
 
     def __repr__(self):
-        ret = 'DiskFileWriter(filesystem=%r, object_name=%r)'
-        return ret % (self._filesystem, self._name)
+        ret = 'DiskFileWriter(client_collection=%r, name=%r, logger=%r)'
+        return ret % (self._client_collection, self._name, self._logger)
 
-    logger = property(lambda self: self._filesystem._logger)
+    logger = property(operator.attrgetter('_logger'))
 
     def write(self, chunk):
         """Write a chunk of data.
@@ -102,7 +110,9 @@ class DiskFileWriter(object):
         self._release_conn()
         metadata['name'] = self._name
         self.logger.debug("Data successfully written for object : %r", self._name)
-        self._filesystem.put_meta(self._name, metadata)
+
+        self._client_collection.get_write_client().put_meta(
+            self._name, metadata)
 
     def commit(self, timestamp):
         """
@@ -125,20 +135,25 @@ class DiskFileReader(object):
     :param name: object name
     :param use_splice: if true, use zero-copy splice() to send data
     """
-    def __init__(self, filesystem, name, use_splice):
-        self._filesystem = filesystem
+    def __init__(self, client_collection, name, use_splice, logger):
+        self._client_collection = client_collection
         self._name = name
         self._use_splice = use_splice
+        self._logger = logger
 
     def __repr__(self):
-        ret = 'DiskFileReader(filesystem=%r, object_name=%r, use_splice=%r)'
-        return ret % (self._filesystem, self._name, self._use_splice)
+        ret = (
+            'DiskFileReader(client_collection=%r, name=%r, use_splice=%r, '
+            'logger=%r)')
+        return ret % (self._client_collection, self._name, self._use_splice,
+                      self.logger)
 
-    logger = property(lambda self: self._filesystem._logger)
+    logger = property(operator.attrgetter('_logger'))
 
     @utils.trace
     def __iter__(self):
-        headers, data = self._filesystem.get_object(self._name)
+        headers, data = self._client_collection.try_read(
+            lambda client: client.get_object(self._name))
         return data
 
     @utils.trace
@@ -147,12 +162,12 @@ class DiskFileReader(object):
 
     @utils.trace
     def zero_copy_send(self, wsockfd):
-        object_url = urlparse.urlparse(self._filesystem.get_url_for_object(
-            self._name))
+        client = self._client_collection.get_read_client()
+
+        object_url = urlparse.urlparse(client.get_url_for_object(self._name))
         conn = None
 
-        with swift.common.exceptions.ConnectionTimeout(
-                self._filesystem.conn_timeout):
+        with swift.common.exceptions.ConnectionTimeout(client.conn_timeout):
             conn = swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection(
                 object_url.netloc)
 
@@ -197,7 +212,8 @@ class DiskFileReader(object):
             'range': 'bytes=' + str(start) + '-' + str(stop)
         }
 
-        headers, data = self._filesystem.get_object(self._name, headers)
+        headers, data = self._client_collection.try_read(
+            lambda client: client.get_object(self._name, headers))
         return data
 
     @utils.trace
@@ -214,14 +230,20 @@ class DiskFileReader(object):
 class DiskFile(object):
     """A simple sproxyd pass-through
 
-    :param filesystem: internal file system object to use
+    :param client_collection: Client collection to use to perform operations
+    :type client_collection: `swift_scality_backend.http_utils.ClientCollection`
     :param account: account name for the object
+    :type account: `str`
     :param container: container name for the object
+    :type container: `str`
     :param obj: object name for the object
+    :type obj: `str`
     :param use_splice: if true, use zero-copy splice() to send data
+    :type use_splice: `bool`
     """
 
-    def __init__(self, filesystem, account, container, obj, use_splice):
+    def __init__(self, client_collection, account, container, obj, use_splice,
+                 logger):
         # We quote separately each part and join parts with a plain forward
         # slash. Note that `urllib.quote(_, '')` escapes forward slashes.
         # Escaping `/` in addition to configuring Apache with
@@ -231,20 +253,22 @@ class DiskFile(object):
         self._name = '/'.join(urllib.quote(part, '')
                               for part in (account, container, obj))
         self._metadata = None
-        self._filesystem = filesystem
+        self._client_collection = client_collection
+        self._logger = logger
 
         self._account = account
         self._container = container
         self._obj = obj
         self._use_splice = use_splice
 
-    logger = property(lambda self: self._filesystem._logger)
+    logger = property(operator.attrgetter('_logger'))
+    client_collection = property(operator.attrgetter('_client_collection'))
 
     def __repr__(self):
-        ret = ('DiskFile(filesystem=%r, account=%r, container=%r, obj=%r, '
-               'use_splice=%r)')
-        return ret % (self._filesystem, self._account, self._container,
-                      self._obj, self._use_splice)
+        ret = ('DiskFile(client_collection=%r, account=%r, container=%r, obj=%r, '
+               'use_splice=%r, logger=%r)')
+        return ret % (self._client_collection, self._account, self._container,
+                      self._obj, self._use_splice, self._logger)
 
     @utils.trace
     def open(self):
@@ -254,9 +278,12 @@ class DiskFile(object):
 
         :raise DiskFileDeleted: if it does not exist
         """
-        metadata = self._filesystem.get_meta(self._name)
+        metadata = self.client_collection.try_read(
+            lambda client: client.get_meta(self._name))
+
         if metadata is None:
             raise swift.common.exceptions.DiskFileDeleted()
+
         self._metadata = metadata or {}
         return self
 
@@ -296,8 +323,9 @@ class DiskFile(object):
         :param keep_cache: ignored. Kept for compatibility with the native
                           `DiskFile` class in Swift
         """
-        dr = DiskFileReader(self._filesystem, self._name,
-                            use_splice=self._use_splice)
+        dr = DiskFileReader(self.client_collection, self._name,
+                            use_splice=self._use_splice,
+                            logger=self.logger)
         return dr
 
     @utils.trace
@@ -309,12 +337,12 @@ class DiskFile(object):
                      `DiskFile` class in Swift. This `create` method is
                      called externally only by the `ObjectController`
         """
-        yield DiskFileWriter(self._filesystem, self._name)
+        yield DiskFileWriter(self.client_collection, self._name, self.logger)
 
     @utils.trace
     def write_metadata(self, metadata):
         """Write a block of metadata to an object."""
-        self._filesystem.put_meta(self._name, metadata)
+        self.client_collection.get_write_client().put_meta(self._name, metadata)
 
     @utils.trace
     def delete(self, timestamp):
@@ -325,7 +353,7 @@ class DiskFile(object):
                           `DiskFile` class in Swift. This `delete` method is
                           called externally only by the `ObjectController`
         """
-        self._filesystem.del_object(self._name)
+        self.client_collection.get_write_client().del_object(self._name)
 
 
 class DiskFileManager(object):
@@ -367,6 +395,9 @@ class DiskFileManager(object):
         if conf_wants_splice and system_has_splice:
             self.use_splice = True
 
-    def get_diskfile(self, sproxyd_client, account, container, obj):
-        return DiskFile(sproxyd_client, account, container, obj,
-                        use_splice=self.use_splice)
+    def get_diskfile(self, client_collection, account, container, obj):
+        return DiskFile(client_collection, account, container, obj,
+                        use_splice=self.use_splice, logger=self.logger)
+
+    def pickle_async_update(self, *args, **kwargs):
+        pass
