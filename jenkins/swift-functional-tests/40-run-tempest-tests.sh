@@ -13,5 +13,5 @@ if is_ubuntu; then
 fi
 
 set +e
-nosetests -w $TEMPEST_DIR/tempest/api/object_storage --exe --exclude=${EXCLUDES} --with-xunit --xunit-file=${WORKSPACE}/tempest-tests.xml
+nosetests -v -w $TEMPEST_DIR/tempest/api/object_storage --exe --exclude=${EXCLUDES} --with-xunit --xunit-file=${WORKSPACE}/tempest-tests.xml
 set -e
