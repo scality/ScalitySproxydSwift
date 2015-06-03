@@ -1,4 +1,7 @@
 #!/bin/bash -xue
+
+EXCLUDES='test_get_object_after_expiry_time|test_get_object_at_expiry_time'
+
 TEMPEST_DIR=/opt/stack/tempest
 sudo pip install -r $TEMPEST_DIR/requirements.txt
 
@@ -10,5 +13,5 @@ if is_ubuntu; then
 fi
 
 set +e
-nosetests -w $TEMPEST_DIR/tempest/api/object_storage --exe --exclude='test_get_object_after_expiry_time|test_get_object_at_expiry_time' --with-xunit --xunit-file=${WORKSPACE}/tempest-tests.xml
+nosetests -v -w $TEMPEST_DIR/tempest/api/object_storage --exe --exclude=${EXCLUDES} --with-xunit --xunit-file=${WORKSPACE}/tempest-tests.xml
 set -e

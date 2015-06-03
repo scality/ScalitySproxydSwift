@@ -6,6 +6,6 @@ fi
 SWIFT_DIR=/opt/stack/swift
 sudo pip install -r $SWIFT_DIR/test-requirements.txt
 set +e
-nosetests -w $SWIFT_DIR/test/functional --exe --with-xunit --xunit-file=${WORKSPACE}/swift-func-tests.xml
+nosetests -v -w $SWIFT_DIR/test/functional --exe --with-xunit --xunit-file=${WORKSPACE}/swift-func-tests.xml
 set -e
 
