@@ -6,7 +6,10 @@ function install_sproxyd_driver {
     if [[ -n "$scal_sproxyd_client" ]]; then
         sudo pip install "$scal_sproxyd_client"
     fi
-    sudo python setup.py install
+    # For some reason, doing this failed: keystone would not work,
+    # complaining about "ArgsAlreadyParsedError: arguments already parsed:".
+    #sudo python setup.py install
+    sudo pip install .
 }
 
 # Shameless ripoff of devstack/lib/swift
