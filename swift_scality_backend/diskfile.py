@@ -207,9 +207,17 @@ class DiskFileReader(object):
 
     @utils.trace
     def app_iter_range(self, start, stop):
-        """iterate over a range."""
+        """
+        Iterate over a range.
+
+        :param start: First byte to read from (inclusive)
+        :type start: int
+        :param stop: Last byte to read (exclusive)
+        :type stop: int
+        """
+        # HTTP range is inclusive on both ends.
         headers = {
-            'range': 'bytes=' + str(start) + '-' + str(stop)
+            'range': 'bytes=%d-%d' % (start, stop - 1)
         }
 
         headers, data = self._client_collection.try_read(
