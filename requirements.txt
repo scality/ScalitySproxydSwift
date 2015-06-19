@@ -1,3 +1,10 @@
-https://launchpad.net/swift/juno/2.2.0/+download/swift-2.2.0.tar.gz
-git+https://github.com/scality/scality-sproxyd-client#egg=scality-sproxyd-client
+# Compatible with Swift Icehouse, Juno and Kilo
+# We assume a pre-existing Swift installation, so use whatever your system comes
+# with, don't simply install any version
+swift >=1.13.1,<2.4
+
+# Currently requires scality-sproxyd-client 'master'. This can be retrieved from
+# https://github.com/scality/scality-sproxyd-client
+scality-sproxyd-client
+
 eventlet>=0.9.15
