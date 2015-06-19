@@ -1,7 +1,7 @@
 #!/bin/bash -xue
 
 function install_deb {
-    sudo aptitude install -y python-dev libffi-dev make
+    sudo aptitude install -y gcc python-dev libffi-dev make
 }
 
 function install_centos {
