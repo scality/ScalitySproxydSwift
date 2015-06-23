@@ -96,6 +96,9 @@ class OSService(object):
         self.conf_file = conf_file
         self._pid_file = "/opt/stack/status/stack/%s.pid" % name
 
+    def __repr__(self):
+        return 'OSService(name=%r)' % self.name
+
     def _create_screen_cmd(self):
         cmd = ''.join(self.screen_cmd_tpml)
         return cmd % dict(
