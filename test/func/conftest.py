@@ -54,7 +54,7 @@ def configurations(request):
     sproxyd_registry.start_processes()
     sproxyd_utils.restart_apache()
 
-    tenant_id = get_admin_keystone_client(request).get_user('demo').tenantId
+    tenant_id = get_admin_keystone_client(request).tenant_id
 
     os_registry = os_utils.OSRegistry()
 
