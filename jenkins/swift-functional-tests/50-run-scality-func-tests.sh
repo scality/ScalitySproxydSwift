@@ -66,16 +66,19 @@ function create_document_root {
     done
 }
 
+if [[ $DEVSTACK_BRANCH != 'stable/icehouse' ]]; then
+    # FIXME : this functional test suite rely completely on the storage policies support which is starting with juno
+    # Tests in test/func/test_common.py should not rely on the storage policy support so that they can be run against icehouse
+    ln_object_ring
+    initialize_env
+    grant_permissions
+    create_document_root
+    sudo pip install pytest pytest-timeout subprocess32
 
-ln_object_ring
-initialize_env
-grant_permissions
-create_document_root
-sudo pip install pytest pytest-timeout subprocess32
-
-set +e
-py.test -v --timeout=60 --os-auth-url=$OS_AUTH_URL --os-identity-api-version=$OS_IDENTITY_API_VERSION --os-demo-username=$OS_DEMO_USERNAME --os-demo-password=$OS_DEMO_PASSWORD --os-demo-tenantname=$OS_DEMO_TENANT_NAME --os-admin-username=$OS_ADMIN_USERNAME --os-admin-password=$OS_ADMIN_PASSWORD --os-admin-tenantname=$OS_ADMIN_TENANT_NAME --host-ip=$HOST_IP --allow-encoded-slashes=$AllowEncodedSlashes --sproxyd-numbers=$SPROXYD_NUMBER --junit-xml=${WORKSPACE}/scality-func-tests.xml test/func
-set -e
+    set +e
+    py.test -v --timeout=60 --os-auth-url=$OS_AUTH_URL --os-identity-api-version=$OS_IDENTITY_API_VERSION --os-demo-username=$OS_DEMO_USERNAME --os-demo-password=$OS_DEMO_PASSWORD --os-demo-tenantname=$OS_DEMO_TENANT_NAME --os-admin-username=$OS_ADMIN_USERNAME --os-admin-password=$OS_ADMIN_PASSWORD --os-admin-tenantname=$OS_ADMIN_TENANT_NAME --host-ip=$HOST_IP --allow-encoded-slashes=$AllowEncodedSlashes --sproxyd-numbers=$SPROXYD_NUMBER --junit-xml=${WORKSPACE}/scality-func-tests.xml test/func
+    set -e
+fi
 
 
 
