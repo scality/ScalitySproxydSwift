@@ -40,21 +40,6 @@ function initialize_env {
     SPROXYD_NUMBER=2
 }
 
-function grant_permissions {
-    local user=$(whoami)
-    local directory
-    if  [[ -d /etc/httpd/conf.d ]]; then
-	directory="/etc/httpd/conf.d"
-    elif  [[ -d /etc/apache2/sites-enabled ]]; then
-	directory=/etc/apache2/sites-enabled
-    else
-	echo "Unkown distribution"
-	return 1
-    fi
-
-    sudo chown ${user} $directory
-    sudo chown ${user} /etc
-}
 
 function create_document_root {
     let upper_bound=$SPROXYD_NUMBER+2
@@ -71,7 +56,6 @@ if [[ $DEVSTACK_BRANCH != 'stable/icehouse' ]]; then
     # Tests in test/func/test_common.py should not rely on the storage policy support so that they can be run against icehouse
     ln_object_ring
     initialize_env
-    grant_permissions
     create_document_root
     sudo pip install pytest pytest-timeout subprocess32
 

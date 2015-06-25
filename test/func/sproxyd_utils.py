@@ -17,7 +17,9 @@
 from __future__ import with_statement
 import os
 import platform
+import stat
 import subprocess32
+import tempfile
 import urllib
 
 
@@ -236,24 +238,40 @@ class SproxydConfiguration(object):
             bootstraplist=self.bootstraplist)
         main_conf = sproxyd_conf_tmpl % dict(
             fcgi_port=self.fcgi_port, ring_driver=ring_driver_conf)
-        with open(self.sproxyd_conf_path, 'w') as f:
-            f.write(main_conf)
+        write_with_sudo_rwrr(main_conf, self.sproxyd_conf_path)
 
     def _write_apache_vhost_conf_file(self):
         conf = apache_vhost_conf_tmpl % dict(
             vhost_port=self.vhost_port, fcgi_port=self.fcgi_port,
             allow_encoded_slash=self.allow_encoded_slashes,
             name=self.name)
-        with open(self.apache_conf_path, 'w') as f:
-            f.write(conf)
+        write_with_sudo_rwrr(conf, self.apache_conf_path)
 
     def write(self):
         self._write_sproxyd_conf_file()
         self._write_apache_vhost_conf_file()
 
     def delete(self):
-        os.remove(self.sproxyd_conf_path)
-        os.remove(self.apache_conf_path)
+        subprocess32.check_call(['sudo', 'rm', self.sproxyd_conf_path])
+        subprocess32.check_call(['sudo', 'rm', self.apache_conf_path])
+
+
+def write_with_sudo(content, dest, perm_flag):
+    """ Write 'content' string to dest
+    using sudo in a subporcess.
+    """
+    fd, path = tempfile.mkstemp()
+    os.chmod(path, perm_flag)
+    with os.fdopen(fd, 'w') as f:
+        f.write(content)
+    subprocess32.check_call(['sudo', 'cp', path, dest])
+    os.remove(path)
+
+
+def write_with_sudo_rwrr(content, dest):
+    write_with_sudo(
+        content, dest,
+        stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
 
 
 def restart_apache():
