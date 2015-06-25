@@ -83,6 +83,8 @@ class SproxydProcess(object):
         self._p = subprocess32.Popen(
             ['sudo', '/usr/local/bin/sproxyd',  '-wdl', '-c', '%s' %
              self.conf_file, '-n', self.name,
+             # Sproxyd is really not verbose by default, these flags provide
+             # some sort of access log
              '-TLERROR,LWARNING,LRINGLL,LRINGLL'],
             stdout=self._f, stderr=subprocess32.STDOUT)
 
