@@ -22,7 +22,6 @@ import sproxyd_utils
 
 
 def pytest_addoption(parser):
-    parser.addoption("--host-ip", action="store")
     parser.addoption("--allow-encoded-slashes", action="store")
     parser.addoption("--os-auth-url", action="store")
     parser.addoption("--os-identity-api-version", action="store")
@@ -58,15 +57,13 @@ def get_admin_keystone_client(request):
 @pytest.yield_fixture(scope="session")
 def configurations(request):
     # FIXME the port 4244 shouldbe configurable
-    bootstraplist = "%s:%s" % (request.config.getoption("--host-ip"), 4244)
     allow_encoded_slashes = request.config.getoption("--allow-encoded-slashes")
 
     sproxyd_registry = sproxyd_utils.SproxydRegistry(
         int(request.config.getoption("--sproxyd-numbers")))
     sproxyd_registry.generate_confs(
         host='127.0.0.1',
-        allow_encoded_slashes=allow_encoded_slashes,
-        bootstraplist=bootstraplist)
+        allow_encoded_slashes=allow_encoded_slashes)
     sproxyd_registry.start_processes()
     sproxyd_utils.restart_apache()
 

@@ -15,48 +15,13 @@
 
 
 from __future__ import with_statement
+import json
 import os
 import platform
 import stat
 import subprocess32
 import tempfile
 import urllib
-
-
-ring_driver_conf_tmpl = """"ring_driver:0": {
-        "by_path_service_id": "%(by_path_service_id)s",
-        "by_path_cos": 0,
-        "alias": "chord_path",
-        "bstraplist": "%(bootstraplist)s",
-        "by_path_enabled": true,
-        "deferred_deletes_enabled_by_policy": false,
-        "deferred_deletes_enabled_by_request": false,
-        "deferred_writes_enabled_by_policy": false,
-        "deferred_writes_enabled_by_request": false,
-        "type": "chord"
-     }"""
-
-sproxyd_conf_tmpl = """{
-    "general": {
-        "ring": "MyRing",
-        "conn_max": 10000,
-        "conn_max_reuse": 100000,
-        "consistent_reads": true,
-        "consistent_writes": true,
-        "max_proc_fd": 40960,
-        "port": %(fcgi_port)s,
-        "split_chunk_size": 33554432,
-        "split_control_by_request": false,
-        "split_enabled": true,
-        "split_gc_cos": 2,
-        "split_memory_limit": 671088640,
-        "split_n_get_workers": 20,
-        "split_n_io_workers": 20,
-        "split_n_put_workers": 20,
-        "split_threshold": 67108864
-    },
-    %(ring_driver)s
-}"""
 
 
 apache_vhost_conf_tmpl = """Listen %(vhost_port)s
@@ -131,8 +96,7 @@ class SproxydRegistry(dict):
     def get_process(self, name):
         return self._processes[name]
 
-    def generate_confs(
-            self, host, allow_encoded_slashes, bootstraplist):
+    def generate_confs(self, host, allow_encoded_slashes):
         for number, name in self._index:
             conf = SproxydConfiguration(
                 name=name, host=host,
@@ -140,7 +104,6 @@ class SproxydRegistry(dict):
                 fcgi_port=self.base_fcgi_port+number,
                 by_path_service_id=hex(self.base_service_id + number),
                 allow_encoded_slashes=allow_encoded_slashes,
-                bootstraplist=bootstraplist,
                 sproxyd_conf_filename=self.sproxyd_filename_tmpl
                 % dict(number=number),
                 apacheconf_filename=self.apache_sproxyd_filename_tmpl
@@ -197,7 +160,7 @@ class SproxydConfiguration(object):
 
     def __init__(
             self, name, host, vhost_port, fcgi_port, by_path_service_id,
-            allow_encoded_slashes, bootstraplist, sproxyd_conf_filename,
+            allow_encoded_slashes, sproxyd_conf_filename,
             apacheconf_filename):
 
         self.name = name
@@ -206,7 +169,6 @@ class SproxydConfiguration(object):
         self.fcgi_port = fcgi_port
         self.by_path_service_id = by_path_service_id
         self.allow_encoded_slashes = allow_encoded_slashes
-        self.bootstraplist = bootstraplist
         self.sproxyd_conf_filename = sproxyd_conf_filename
         self.apacheconf_filename = apacheconf_filename
 
@@ -232,13 +194,17 @@ class SproxydConfiguration(object):
     def url(self):
         return "http://%s:%s/proxy/chord_path" % (self.host, self.vhost_port)
 
+    def _create_sproxyd_conf(self):
+        with open('/etc/sproxyd.conf', 'r') as f:
+            conf = json.load(f)
+        del conf['ring_driver:1']
+        conf['general']['port'] = self.fcgi_port
+        conf['ring_driver:0']['by_path_service_id'] = self.by_path_service_id
+        return conf
+
     def _write_sproxyd_conf_file(self):
-        ring_driver_conf = ring_driver_conf_tmpl % dict(
-            by_path_service_id=self.by_path_service_id,
-            bootstraplist=self.bootstraplist)
-        main_conf = sproxyd_conf_tmpl % dict(
-            fcgi_port=self.fcgi_port, ring_driver=ring_driver_conf)
-        write_with_sudo_rwrr(main_conf, self.sproxyd_conf_path)
+        conf = self._create_sproxyd_conf()
+        write_with_sudo_rwrr(json.dumps(conf), self.sproxyd_conf_path)
 
     def _write_apache_vhost_conf_file(self):
         conf = apache_vhost_conf_tmpl % dict(

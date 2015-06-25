@@ -35,8 +35,6 @@ function initialize_env {
 
     source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
     AllowEncodedSlashes=$(get_AllowEncodedSlashes)
-    # FIXME : this is already defined 10-install-ring.sh
-    HOST_IP=$(/sbin/ip addr show dev eth0 | sed -nr 's/.*inet ([0-9.]+).*/\1/p');
     SPROXYD_NUMBER=2
 }
 
@@ -60,7 +58,7 @@ if [[ $DEVSTACK_BRANCH != 'stable/icehouse' ]]; then
     sudo pip install pytest pytest-timeout subprocess32
 
     set +e
-    py.test -v --timeout=60 --os-auth-url=$OS_AUTH_URL --os-identity-api-version=$OS_IDENTITY_API_VERSION --os-demo-username=$OS_DEMO_USERNAME --os-demo-password=$OS_DEMO_PASSWORD --os-demo-tenantname=$OS_DEMO_TENANT_NAME --os-admin-username=$OS_ADMIN_USERNAME --os-admin-password=$OS_ADMIN_PASSWORD --os-admin-tenantname=$OS_ADMIN_TENANT_NAME --host-ip=$HOST_IP --allow-encoded-slashes=$AllowEncodedSlashes --sproxyd-numbers=$SPROXYD_NUMBER --junit-xml=${WORKSPACE}/scality-func-tests.xml test/func
+    py.test -v --timeout=60 --os-auth-url=$OS_AUTH_URL --os-identity-api-version=$OS_IDENTITY_API_VERSION --os-demo-username=$OS_DEMO_USERNAME --os-demo-password=$OS_DEMO_PASSWORD --os-demo-tenantname=$OS_DEMO_TENANT_NAME --os-admin-username=$OS_ADMIN_USERNAME --os-admin-password=$OS_ADMIN_PASSWORD --os-admin-tenantname=$OS_ADMIN_TENANT_NAME --allow-encoded-slashes=$AllowEncodedSlashes --sproxyd-numbers=$SPROXYD_NUMBER --junit-xml=${WORKSPACE}/scality-func-tests.xml test/func
     set -e
 fi
 
