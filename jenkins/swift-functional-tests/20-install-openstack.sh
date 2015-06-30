@@ -16,7 +16,7 @@ EOF
         # requires keystoneclient >= 1.0.0
         # whereas keystone requires keystoneclient <= 0.11.2
         # python-glanceclient >= 0.13.1 is required by openstackclient 0.4.1
-        sudo pip install python-glanceclient==0.13.1
+        sudo pip install "python-glanceclient==0.13.1", "oslo.i18n<2.0.0"
     fi
     ./devstack/stack.sh
 }
