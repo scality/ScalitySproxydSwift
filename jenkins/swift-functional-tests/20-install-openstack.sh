@@ -27,18 +27,18 @@ function ubuntu_common {
     if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
         sudo aptitude install -y gcc python-dev
     fi
-}
-
-function ubuntu14_specifics {
     # Workaround pip upgrading six without completely removing the old one
-    # which then cause an error.
+    # which then cause an error.    
     sudo easy_install -U six
 }
 
+function ubuntu14_specifics {
+    :
+}
+
 function ubuntu12_specifics {
-    # Workaround pip upgrading cmd2 without completely removing the old one
-    # which then cause an error.
-    sudo easy_install -U cmd2
+    # Nova Kilo and after needs a libvirt >= 0.9.11. Ubuntu 12.04 vanilla ships 0.9.8.
+    sudo add-apt-repository --yes cloud-archive:icehouse
 }
 
 function centos_specifics {
