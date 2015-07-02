@@ -91,6 +91,16 @@ class ObjectController(swift.obj.server.ObjectController):
             self._location_preferences = \
                 swift_scality_backend.utils.split_list(location_preferences)
 
+        self.logger.info('=== Begin swift_scality_backend configuration ===')
+        self.logger.info(repr({
+            'policy_0_urls': self._policy_0_urls,
+            'conn_timeout': self._conn_timeout,
+            'read_timeout': self._read_timeout,
+            'policy_configuration': self._policy_configuration,
+            'location_preferences': self._location_preferences,
+        }))
+        self.logger.info('=== End swift_scality_backend configuration ===')
+
     def _get_client_for_policy(self, policy_idx):
         '''Retrieve or create an Sproxyd client for a given storage policy
 
@@ -184,6 +194,14 @@ class ObjectController(swift.obj.server.ObjectController):
 
             # Cache the collection for this policy
             self._clients[policy_idx] = collection
+
+            self.logger.info(
+                '=== Begin swift_scality_backend configuration for '
+                'storage policy %r ===' % policy_idx)
+            self.logger.info(repr(collection))
+            self.logger.info(
+                '=== End swift_scality_backend configuration for '
+                'storage policy %r ===' % policy_idx)
 
         return self._clients[policy_idx]
 
