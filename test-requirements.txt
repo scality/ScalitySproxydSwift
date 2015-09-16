@@ -5,5 +5,4 @@ nose
 nosexcover
 openstack.nose_plugin
 nosehtmloutput
-mock>=1.0
 git+https://github.com/scality/scality-sproxyd-client#egg=scality-sproxyd-client
