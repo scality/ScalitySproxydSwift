@@ -51,7 +51,8 @@ class ObjectController(swift.obj.server.ObjectController):
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice,
-                     policy=POLICY_STUB):
+                     policy=POLICY_STUB,
+                     logger_thread_locals=None):
         """Sends or saves an async update.
 
         :param op: operation performed (ex: 'PUT', or 'DELETE')
@@ -67,7 +68,12 @@ class ObjectController(swift.obj.server.ObjectController):
         :param policy: the associated BaseStoragePolicy instance OR the
                        associated storage policy index (depends on the Swift
                        version)
+        :param logger_thread_locals: The thread local values to be set on the
+                                     self.logger to retain transaction
+                                     logging information.
         """
+        if logger_thread_locals:
+            self.logger.thread_locals = logger_thread_locals
         headers_out['user-agent'] = 'obj-server %s' % os.getpid()
         full_path = '/%s/%s/%s' % (account, container, obj)
         if all([host, partition, contdevice]):
