@@ -1,49 +1,6 @@
 #!/bin/bash -xue
 
 
-function set_keepalive {
-    local filepath
-    for filepath in "/etc/apache2/apache2.conf" "/etc/httpd/conf/httpd.conf"; do
-        if  [[ -f $filepath ]]; then
-            sudo sed -i'.sedbck' "s/KeepAlive O.*/KeepAlive ${KEEPALIVE}/" $filepath
-            return 0
-        fi
-    done
-    echo "Could not find the path to the apache configuration file."
-    return 1
-}
-
-function restart_apache {
-    local filepath
-    for filepath in "/etc/init.d/apache2" "/etc/init.d/httpd"; do
-        if  [[ -f $filepath ]]; then
-            sudo $filepath restart
-            return 0
-        fi
-    done
-    echo "Could not find the apache init script."
-    return 1
-}
-
-function set_keep_alive_and_restart {
-    set_keepalive
-    restart_apache
-}
-
-
-function get_AllowEncodedSlashes {
-    if is_ubuntu; then
-	echo "$UBUNTU_AllowEncodedSlashes"
-    elif is_centos; then
-	echo "$CENTOS_AllowEncodedSlashes"
-    else
-	echo "Unkown distribution"
-	return 1
-    fi
-}
-
-source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
-AllowEncodedSlashes=$(get_AllowEncodedSlashes)
 SUP_ADMIN_LOGIN="myName"
 SUP_ADMIN_PASS="myPass"
 INTERNAL_MGMT_LOGIN="super"
@@ -58,5 +15,4 @@ install_ringsh
 build_ring
 show_ring_status
 install_sproxyd
-set_keep_alive_and_restart
 test_sproxyd

@@ -1,5 +1,6 @@
 #!/bin/bash -xue
 
+PYTHON_MOX_CENTOS=ftp://ftp.is.co.za/mirror/fedora.redhat.com/epel/6/x86_64/python-mox-0.5.3-2.el6.noarch.rpm
 
 function common {
     git clone -b ${DEVSTACK_BRANCH} https://github.com/openstack-dev/devstack.git
@@ -46,7 +47,7 @@ function centos_specifics {
     wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python;
     sudo easy_install -U six
     sudo yum install -y python-pip
-    sudo yum install -y https://kojipkgs.fedoraproject.org//packages/python-mox/0.5.3/2.el6/noarch/python-mox-0.5.3-2.el6.noarch.rpm
+    sudo yum install -y $PYTHON_MOX_CENTOS
     if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
         # Required to get 'cryptography' python package compiled during its installation through pip.
         sudo yum install -y gcc python-devel libffi-devel openssl-devel
