@@ -26,10 +26,20 @@ function enable_sproxyd_driver {
     done
 }
 
+function configure_swift_functional_tests {
+    if [[ $DEVSTACK_BRANCH == "stable/kilo" ]]; then
+        # keystone V3 support in devstack working properly
+        testfile=${SWIFT_CONF_DIR}/test.conf
+        iniset ${testfile} func_test auth_version 2
+        iniset ${testfile} func_test auth_prefix /v2.0/
+    fi
+}
+
 if is_service_enabled s-object; then
     if [[ "$1" == "stack" && "$2" == "install" ]]; then
         echo_summary "Post-config hook : install swift-sproxyd."
         install_sproxyd_driver
+        configure_swift_functional_tests
     fi
     if [[ "$1" == "stack" && "$2" == "post-config" ]]; then
         echo_summary "Post-config hook : enable swift-sproxyd."
