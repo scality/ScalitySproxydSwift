@@ -60,6 +60,7 @@ function configure_swift_functional_tests {
         testfile=${SWIFT_CONF_DIR}/test.conf
         iniset ${testfile} func_test auth_version 2
         iniset ${testfile} func_test auth_prefix /v2.0/
+        iniset /etc/swift/proxy-server.conf DEFAULT disallowed_sections tempurl
     fi
 }
 
