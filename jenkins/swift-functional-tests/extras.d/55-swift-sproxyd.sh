@@ -28,10 +28,13 @@ function enable_sproxyd_driver {
 
 function configure_swift_functional_tests {
     if [[ $DEVSTACK_BRANCH == "stable/kilo" ]]; then
-        # keystone V3 support in devstack working properly
+        # keystone V3 support in devstack is not working properly
         testfile=${SWIFT_CONF_DIR}/test.conf
         iniset ${testfile} func_test auth_version 2
         iniset ${testfile} func_test auth_prefix /v2.0/
+        # Disable temporary url feature so that related tests gets skipped
+        # Some of those are failing during setup phase with credentials related errors
+        # So most probably a keystone API version related issue
         iniset /etc/swift/proxy-server.conf DEFAULT disallowed_sections tempurl
     fi
 }
