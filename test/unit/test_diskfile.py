@@ -431,6 +431,31 @@ class TestDiskFile(unittest.TestCase):
         self.assertEqual(1, mock_del_object.call_count)
         mock_del_object.assert_called_with('a/c/o')
 
+    @utils.skipIf(not hasattr(swift.common.utils, 'Timestamp'), 'Swift2+ only')
+    def test_timestamps_when_no_metadata(self):
+        sfs = SproxydFileSystem({}, mock.Mock())
+        df = DiskFile(sfs, 'a', 'c', 'o')
+
+        # assertRaises expects a `callable`, but `timestamp` is a property
+        # We could use the `with self.assertRaises(exc):` form but that's
+        # Python 2.7+ only
+        self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
+                          lambda: df.timestamp)
+        self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
+                          lambda: df.data_timestamp)
+
+    @utils.skipIf(not hasattr(swift.common.utils, 'Timestamp'), 'Swift2+ only')
+    @mock.patch('swift.common.utils.Timestamp')
+    def test_timestamp(self, mock_timestamp):
+        sfs = SproxydFileSystem({}, mock.Mock())
+        df = DiskFile(sfs, 'a', 'c', 'o')
+
+        df._metadata = mock.Mock()
+        df.timestamp
+
+        df._metadata.get.assert_called_once_with('X-Timestamp')
+        mock_timestamp.assert_called_once_with(df._metadata.get())
+
 
 def test_ping_when_network_exception_is_raised():
 
