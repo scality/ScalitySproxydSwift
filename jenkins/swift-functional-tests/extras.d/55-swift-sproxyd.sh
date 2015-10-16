@@ -53,6 +53,7 @@ function enable_storage_policies {
     amend_swift_conf
     create_storage_policies_conf
     symlink_ring_files
+}
 
 function configure_swift_functional_tests {
     if [[ $DEVSTACK_BRANCH == "stable/kilo" ]]; then
