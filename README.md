@@ -4,6 +4,10 @@ Scality object server backend for OpenStack Swift
 Installation
 ------------
 
+0. Download and uncompress the source code of this project. All the releases for this 
+   project can be found [here](https://github.com/scality/ScalitySproxydSwift/releases).
+   For now the recommended version to use is the latest of the 0.3 branch.
+
 1. Install the Sproxyd object server:
    ``sudo python setup.py install``
 
