@@ -1,6 +1,6 @@
 #!/bin/bash -xue
 
-EXCLUDES='test_get_object_after_expiry_time|test_get_object_at_expiry_time'
+EXCLUDES='test_get_object_after_expiry_time|test_get_object_at_expiry_time|test_container_sync_middleware'
 
 TEMPEST_DIR=/opt/stack/tempest
 sudo pip install -r $TEMPEST_DIR/requirements.txt
