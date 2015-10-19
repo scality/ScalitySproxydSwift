@@ -5,3 +5,4 @@ nose
 nosexcover
 openstack.nose_plugin
 nosehtmloutput
+mock>=1.0
