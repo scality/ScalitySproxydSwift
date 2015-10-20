@@ -5,6 +5,12 @@ be installed before installing this package.
 
 .. _Scality Sproxyd client: https://github.com/scality/scality-sproxyd-client
 
+0. Download and uncompress the source code of this project. All the releases for this
+   project can be found here_.
+   For now the recommended version to use is the latest of the 0.3 branch.
+
+.. _here: https://github.com/scality/ScalitySproxydSwift/releases
+
 1. Install this package:
 
    .. code-block:: console

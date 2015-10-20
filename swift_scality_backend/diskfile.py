@@ -363,6 +363,16 @@ class DiskFile(object):
         """
         self.client_collection.get_write_client().del_object(self._name)
 
+    # Class `swift.common.utils.Timestamp` is Swift 2.0+
+    if hasattr(swift.common.utils, 'Timestamp'):
+        @property
+        def timestamp(self):
+            if self._metadata is None:
+                raise swift.common.exceptions.DiskFileNotOpen()
+            return swift.common.utils.Timestamp(self._metadata.get('X-Timestamp'))
+
+        data_timestamp = timestamp
+
 
 class DiskFileManager(object):
     """
