@@ -269,6 +269,33 @@ class TestDiskFile(unittest.TestCase):
 
         mock_del_object.assert_called_once_with('a/c/o')
 
+    @utils.skipIf(not hasattr(swift.common.utils, 'Timestamp'), 'Swift2+ only')
+    def test_timestamps_when_no_metadata(self):
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
+
+        # assertRaises expects a `callable`, but `timestamp` is a property
+        # We could use the `with self.assertRaises(exc):` form but that's
+        # Python 2.7+ only
+        self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
+                          lambda: df.timestamp)
+        self.assertRaises(swift.common.exceptions.DiskFileNotOpen,
+                          lambda: df.data_timestamp)
+
+    @utils.skipIf(not hasattr(swift.common.utils, 'Timestamp'), 'Swift2+ only')
+    @mock.patch('swift.common.utils.Timestamp')
+    def test_timestamp(self, mock_timestamp):
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
+
+        df._metadata = mock.Mock()
+        df.timestamp
+
+        df._metadata.get.assert_called_once_with('X-Timestamp')
+        mock_timestamp.assert_called_once_with(df._metadata.get())
+
 
 class TestClientCollection(unittest.TestCase):
     '''Tests for `swift_scality_backend.diskfile.ClientCollection`'''
