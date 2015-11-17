@@ -110,16 +110,16 @@ def integrity_check(swift_connection, container, file_hashes):
                     "SHA1 mismatch: {expected:s} != {actual:s}".format(
                         expected=expected_sha1,
                         actual=actual_sha1,
-                        )
                     )
+                )
 
         except ClientException as e:
             failures[filename] = (
                 "Failed to retrieve object '{obj:s}': {exception:s}".format(
                     obj=filename,
                     exception=e,
-                    )
                 )
+            )
 
     return failures
 
@@ -152,7 +152,7 @@ def container_integrity(swift_host, container, directory, storage_policy=None,
         authurl=AUTH_ENDPOINT.format(host=swift_host),
         user=user,
         key=key,
-        )
+    )
     try:
         policy = create_container(swift_connection, container, storage_policy)
         print("'{0:s}' created with policy '{1:s}'".format(container, policy))
@@ -188,7 +188,7 @@ def container_by_manifest(swift_host, container, manifest_path,
         authurl=AUTH_ENDPOINT.format(host=swift_host),
         user=user,
         key=key,
-        )
+    )
     try:
         failures = integrity_check(swift_connection, container, manifest)
         summarize(failures)

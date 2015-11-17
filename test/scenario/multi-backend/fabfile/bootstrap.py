@@ -22,7 +22,7 @@ def swift(swift_user):
         'python-simplejson', 'python-xattr', 'python-eventlet',
         'python-greenlet', 'python-pastedeploy', 'python-netifaces',
         'python-pip', 'python-dnspython',
-        ]
+    ]
 
     utils.apt_get(packages)
 
@@ -52,7 +52,7 @@ def ring():
         'HOST_IP': env.host,
         'SCAL_PASS': os.environ['SCAL_PASS'],
         'AllowEncodedSlashes': 'NoDecode',
-        }
+    }
     export_vars = ('{0:s}={1:s}'.format(k, v) for k, v in install_env.items())
     export_cmd = 'export {0:s}'.format(' '.join(export_vars))
 
@@ -99,7 +99,7 @@ def scality_storage_policy(swift_user, sproxyd_endpoint):
         'sproxyd_netloc': endpoint_parts.netloc,
         'sproxyd_path': endpoint_parts.path,
         'user': swift_user,
-        }
+    }
     for path, _, filenames in os.walk('assets/saio/phase2/etc/swift'):
         utils.render(path, filenames, 'assets/saio/phase2', content)
     sudo('chown -R {0:s} /etc/swift'.format(swift_user))
@@ -115,7 +115,7 @@ def scality_storage_policy(swift_user, sproxyd_endpoint):
         filenames=['rc.local'],
         local_path_prefix='assets/saio/phase2',
         content={'user': swift_user},
-        )
+    )
     sudo('chmod 755 /etc/rc.local')
     sudo('chown root: /etc/rc.local')
 
@@ -124,9 +124,9 @@ def scality_storage_policy(swift_user, sproxyd_endpoint):
         name='object-1.builder',
         devices=[
             'r1z1-127.0.0.1:6050/placeholder',
-            ],
+        ],
         replicas=1,
-        )
+    )
 
     saio.stop(swift_user)
     saio.start(swift_user)
