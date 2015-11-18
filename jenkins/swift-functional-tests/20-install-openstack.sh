@@ -1,76 +1,50 @@
 #!/bin/bash -xue
 
-PYTHON_MOX_CENTOS=ftp://ftp.is.co.za/mirror/fedora.redhat.com/epel/6/x86_64/python-mox-0.5.3-2.el6.noarch.rpm
+source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
+install_packages git
 
-function common {
-    git clone -b ${DEVSTACK_BRANCH} https://github.com/openstack-dev/devstack.git
-    cp devstack/samples/local.conf devstack/local.conf
-    cat >> devstack/local.conf <<EOF
-disable_service c-sch c-api c-vol horizon
-enable_service key mysql s-proxy s-object s-container s-account
-SCREEN_LOGDIR="\${DEST}/logs"
+git clone -b ${DEVSTACK_BRANCH} https://github.com/openstack-dev/devstack.git
+
+cat > devstack/local.conf <<-EOF
+	[[local|localrc]]
+	DATABASE_PASSWORD=testtest; RABBIT_PASSWORD=testtest; SERVICE_TOKEN=testtest; SERVICE_PASSWORD=testtest; ADMIN_PASSWORD=testtest; SWIFT_HASH=011688b44136573e209e; SCREEN_LOGDIR=\${DEST}/logs
+	disable_all_services; enable_service key mysql s-proxy s-object s-container s-account tempest
+	[[post-config|\${SWIFT_CONF_DIR}/proxy-server.conf]]
+	[filter:versioned_writes]
+	allow_versioned_writes = true
+	[[post-config|\${SWIFT_CONF_DIR}/object-server/1.conf]]
+	[app:object-server]
+	use = egg:swift_scality_backend#sproxyd_object
+	sproxyd_host = 127.0.0.1:81
+	sproxyd_path = /proxy/bpchord
 EOF
-    cp jenkins/${JOB_NAME%%/*}/extras.d/55-swift-sproxyd.sh devstack/extras.d/55-swift-sproxyd.sh
-    if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
-        # Workaound depencies version conflict :
-        # last python-glanceclient (0.17 at the time of writing), wich gets installed by default,
-        # requires keystoneclient >= 1.0.0
-        # whereas keystone requires keystoneclient <= 0.11.2
-        # python-glanceclient >= 0.13.1 is required by openstackclient 0.4.1
-        sudo pip install "python-glanceclient==0.13.1", "oslo.i18n<2.0.0"
-    fi
-    ./devstack/stack.sh
-}
 
-function ubuntu_common {
-    wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python;
-    sudo easy_install pip
-    if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
-        sudo aptitude install -y gcc python-dev
-    fi
-    # Workaround pip upgrading six without completely removing the old one
-    # which then cause an error.    
-    sudo easy_install -U six
-}
+# stable/juno is broken. Changes in DevStack and in Swift are required but
+# upstreaming the fixes is not practical.
+if [[ ${DEVSTACK_BRANCH} == "stable/juno" ]]; then
+	cat > devstack/extras.d/10-fix-scality.sh <<-EOF
+		if [[ "\$1" == "stack" && "\$2" == "install" ]]; then
+		    pip_install_gr python-novaclient; pip_install_gr python-cinderclient; pip_install_gr python-glanceclient; pip_install_gr python-neutronclient
+		    if is_service_enabled swift; then
+		        cd /opt/stack/swift
+		        sed -i 's/ignore-errors = True/ignore_errors = True/' .coveragerc
+		        grep -q python-keystoneclient test-requirements.txt || echo 'python-keystoneclient>=0.10.0,<1.2.0' >> test-requirements.txt
+		        grep -q 'passenv = SWIFT_' tox.ini || sed -i '/commands = nosetests {posargs:test\/unit}/ a\passenv = SWIFT_* *_proxy' tox.ini
+		        cd -
+		    fi
+		fi
+	EOF
+fi
 
-function ubuntu14_specifics {
-    :
-}
+cat > devstack/extras.d/60-scality-swift-diskfile.sh <<-EOF
+	if [[ "\$1" == "stack" && "\$2" == "install" ]] && is_service_enabled swift; then
+	    sudo pip install https://github.com/scality/scality-sproxyd-client/archive/master.tar.gz
+	    sudo pip install .
+	fi
+EOF
 
-function ubuntu12_specifics {
-    # Nova Kilo and after needs a libvirt >= 0.9.11. Ubuntu 12.04 vanilla ships 0.9.8.
-    sudo add-apt-repository --yes cloud-archive:icehouse
-}
+# For some reason on Centos 7, there's a segfault in libpython-dev which
+# crashes DevStack. In that case, try again.
+./devstack/stack.sh || ./devstack/stack.sh
 
-function centos_specifics {
-    sudo yum install -y wget
-    wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python;
-    sudo easy_install -U six
-    sudo yum install -y python-pip
-    sudo yum install -y $PYTHON_MOX_CENTOS
-    if [[ $DEVSTACK_BRANCH == "stable/icehouse" ]]; then
-        # Required to get 'cryptography' python package compiled during its installation through pip.
-        sudo yum install -y gcc python-devel libffi-devel openssl-devel
-        # Required by keystoneclient
-        sudo yum install -y MySQL-python
-        # devstack uses the ip command.
-        export PATH=$PATH:/sbin/
-    fi
-}
-
-function main {
-    source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
-    if is_ubuntu; then
-        ubuntu_common
-        if [[ $os_CODENAME == "precise" ]]; then
-            ubuntu12_specifics
-        elif [[ $os_CODENAME == "trusty" ]]; then
-            ubuntu14_specifics
-        fi
-    elif is_centos; then
-        centos_specifics
-    fi
-    common
-}
-
-main
+sudo pip install junitxml

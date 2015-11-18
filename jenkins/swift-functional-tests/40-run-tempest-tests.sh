@@ -1,17 +1,11 @@
 #!/bin/bash -xue
 
-EXCLUDES='test_get_object_after_expiry_time|test_get_object_at_expiry_time|test_container_sync_middleware'
+cd /opt/stack/tempest
 
-TEMPEST_DIR=/opt/stack/tempest
-sudo pip install -r $TEMPEST_DIR/requirements.txt
-
-source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
-if is_ubuntu; then
-    if [[ "$(lsb_release -c -s)" == "trusty" ]]; then
-        sudo pip install -U oslo.config
-    fi
-fi
-
+# Once https://review.openstack.org/#/c/242076/ is merged we should also enable
+# Tempest scenarios
 set +e
-nosetests -v -w $TEMPEST_DIR/tempest/api/object_storage --exe --exclude=${EXCLUDES} --with-xunit --xunit-file=${WORKSPACE}/tempest-tests.xml
+tox -e all -- 'tempest.api.object_storage(?!.*test_object_expiry)(?!.*with_expect_continue)(?!.*ContainerSyncMiddlewareTest.test_container_synchronization)'
 set -e
+
+testr last --subunit | subunit2junitxml -o ${WORKSPACE}/tempest-tests.xml
