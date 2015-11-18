@@ -28,7 +28,7 @@ def render(directory, filenames, local_path_prefix, content):
             destination=os.path.join(remote_directory, filename),
             context=content,
             use_sudo=True,
-            )
+        )
 
 
 def build_object_ring(swift_user, name, devices, part_power=10, replicas=3):
@@ -57,7 +57,8 @@ def build_object_ring(swift_user, name, devices, part_power=10, replicas=3):
         for device in devices:
             sudo(add_cmd.format(name, device), user=swift_user)
 
-        sudo('swift-ring-builder {0:s} rebalance'.format(name), user=swift_user)
+        sudo('swift-ring-builder {0:s} rebalance'.format(name),
+             user=swift_user)
 
 
 def apt_get(packages):

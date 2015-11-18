@@ -3,7 +3,7 @@ import os.path
 
 import fabric.contrib.files
 
-from fabric.api import put, sudo
+from fabric.api import sudo
 
 from utils import build_object_ring, render
 
@@ -17,7 +17,7 @@ def disk_setup(swift_user):
         filename='/etc/fstab',
         text='/srv/swift-disk /mnt/sdb1 xfs loop,noatime 0 0',
         use_sudo=True
-        )
+    )
 
     sudo('mkdir /mnt/sdb1')
     sudo('mount /mnt/sdb1')
@@ -39,7 +39,7 @@ def disk_setup(swift_user):
         filenames=['rc.local'],
         local_path_prefix='assets/saio/phase1',
         content={'user': swift_user},
-        )
+    )
     sudo('chmod 755 /etc/rc.local')
     sudo('chown root: /etc/rc.local')
 
@@ -49,7 +49,10 @@ def install(swift_user):
          'git+https://github.com/openstack/python-swiftclient.git@2.6.0')
     sudo('pip install git+https://github.com/openstack/swift.git@2.5.0')
 
-    content = { 'user': swift_user, 'group': swift_user }
+    content = {
+        'user': swift_user,
+        'group': swift_user,
+    }
     for path, _, filenames in os.walk('assets/saio/phase1/etc/swift'):
         render(path, filenames, 'assets/saio/phase1', content)
 
@@ -66,8 +69,8 @@ def build_rings(swift_user):
             'r1z2-127.0.0.1:6022/sdb2',
             'r1z3-127.0.0.1:6032/sdb3',
             'r1z4-127.0.0.1:6042/sdb4',
-            ],
-        )
+        ],
+    )
 
     # Container ring
     build_object_ring(
@@ -78,8 +81,8 @@ def build_rings(swift_user):
             'r1z2-127.0.0.1:6021/sdb2',
             'r1z3-127.0.0.1:6031/sdb3',
             'r1z4-127.0.0.1:6041/sdb4',
-            ],
-        )
+        ],
+    )
 
     # Object ring
     build_object_ring(
@@ -94,8 +97,8 @@ def build_rings(swift_user):
             'r1z3-127.0.0.1:6030/sdb7',
             'r1z4-127.0.0.1:6040/sdb4',
             'r1z4-127.0.0.1:6040/sdb8',
-            ],
-        )
+        ],
+    )
 
 
 def setup_rsync(swift_user):
@@ -103,20 +106,21 @@ def setup_rsync(swift_user):
         directory='assets/saio/phase1/etc',
         filenames=['rsyncd.conf'],
         local_path_prefix='assets/saio/phase1',
-        content={ 'user': swift_user, 'group': swift_user },
-        )
+        content={'user': swift_user, 'group': swift_user},
+    )
     fabric.contrib.files.sed(
         filename='/etc/default/rsync',
         before='RSYNC_ENABLE=false',
         after='RSYNC_ENABLE=true',
         use_sudo=True,
-        )
+    )
 
     sudo('sudo service rsync restart')
 
 
 def install_scality_swift():
-    sudo('pip install git+https://github.com/scality/scality-sproxyd-client.git')
+    sudo('pip install '
+         'git+https://github.com/scality/scality-sproxyd-client.git')
     sudo('pip install git+https://github.com/scality/ScalitySproxydSwift.git')
 
 
