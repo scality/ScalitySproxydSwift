@@ -2,8 +2,5 @@
 hacking>=0.8.0,<0.9
 coverage
 nose
-nosexcover
-openstack.nose_plugin
-nosehtmloutput
 git+https://github.com/scality/scality-sproxyd-client#egg=scality-sproxyd-client
 mock>=1.0
