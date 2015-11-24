@@ -52,12 +52,18 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
-        # TODO(jordanP) to be changed when we make clear in the Readme we expect
-        # a comma separated list of full sproxyd endpoints.
-        sproxyd_path = conf.get('sproxyd_path', '/proxy/chord').strip('/')
-        self._policy_0_urls = [
-            'http://%s/%s/' % (h, sproxyd_path)
-            for h in swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
+        # New style configuration expects
+        # sproxyd_endpoints = http://sproxyd1:port/path1, http://sproxyd2:port/path2
+        # in object-server.conf
+        if conf.get('sproxyd_endpoints'):
+            self._policy_0_urls = swift_scality_backend.utils.split_list(
+                conf['sproxyd_endpoints'])
+        # But we still support specifying sproxyd_host and sproxyd_path
+        else:
+            sproxyd_path = conf.get('sproxyd_path', '/proxy/chord').strip('/')
+            self._policy_0_urls = [
+                'http://%s/%s/' % (h, sproxyd_path)
+                for h in swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
 
         float_or_none = lambda v: float(v) if v is not None else None
         self._conn_timeout = float_or_none(conf.get('sproxyd_conn_timeout'))
