@@ -19,6 +19,7 @@ Contents:
    :maxdepth: 2
 
    installation
+   supported_distros
    api/modules
 
 
