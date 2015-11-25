@@ -179,6 +179,59 @@ class TestDiskFileWriter(unittest.TestCase):
 
         mock_put_meta.assert_called_with('obj', {'meta1': 'val', 'name': 'obj'})
 
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
+                return_value=(FakeHTTPConn(), mock.Mock()))
+    def test_write_no_data(self, mock_http):
+        dfw = DiskFileWriter(make_client_collection(), 'obj',
+                             logger=logging.root)
+
+        written = dfw.write("")
+
+        self.assertEqual(0, written)
+        fake_http_conn = mock_http.return_value[0]
+        self.assertEqual('0\r\n\r\n', fake_http_conn._buffer.getvalue())
+
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
+                return_value=(FakeHTTPConn(), mock.Mock()))
+    def test_write_with_data(self, mock_http):
+        dfw = DiskFileWriter(make_client_collection(), 'obj',
+                             logger=logging.root)
+
+        data = "a" * 4096
+        written = dfw.write(data)
+
+        self.assertEqual(len(data), written)
+        fake_http_conn = mock_http.return_value[0]
+        self.assertEqual('%x\r\n%s\r\n' % (len(data), data),
+                         fake_http_conn._buffer.getvalue())
+
+
+class TestDiskFileReader(unittest.TestCase):
+
+    def test_app_iter_ranges_with_no_ranges(self):
+        dfr = DiskFileReader(make_client_collection(), 'obj', False,
+                             logger=logging.root)
+
+        gen = dfr.app_iter_ranges([], mock.sentinel.arg1,
+                                  mock.sentinel.arg2, mock.sentinel.arg3)
+        self.assertEqual('', gen.next())
+        self.assertRaises(StopIteration, gen.next)
+
+    @mock.patch('swift.common.swob.multi_range_iterator')
+    def test_app_iter_ranges(self, mock_mri):
+        mock_mri.return_value = iter(['data'])
+        dfr = DiskFileReader(make_client_collection(), 'obj', False,
+                             logger=logging.root)
+
+        gen = dfr.app_iter_ranges([(1, 100)], mock.sentinel.arg1,
+                                  mock.sentinel.arg2, mock.sentinel.arg3)
+
+        self.assertEqual('data', gen.next())
+        self.assertRaises(StopIteration, gen.next)
+        mock_mri.assert_called_once_with([(1, 100)], mock.sentinel.arg1,
+                                         mock.sentinel.arg2, mock.sentinel.arg3,
+                                         dfr.app_iter_range)
+
 
 class TestDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFile"""
