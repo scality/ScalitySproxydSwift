@@ -1,5 +1,4 @@
 import os
-import urlparse
 
 import saio
 import utils
@@ -93,11 +92,8 @@ def scality_storage_policy(swift_user, sproxyd_endpoint):
     saio.install_scality_swift()
 
     # Add scality RING storage policy.
-    endpoint_parts = urlparse.urlparse(sproxyd_endpoint)
     content = {
         'sproxyd_endpoint': sproxyd_endpoint,
-        'sproxyd_netloc': endpoint_parts.netloc,
-        'sproxyd_path': endpoint_parts.path,
         'user': swift_user,
     }
     for path, _, filenames in os.walk('assets/saio/phase2/etc/swift'):
