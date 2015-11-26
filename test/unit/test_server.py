@@ -102,6 +102,18 @@ def test_api_compatible():
         yield check_api_compatible, name
 
 
+def test_setup_with_sproxyd_endpoints():
+    endpoint1 = 'http://h1:81/p'
+    endpoint2 = 'http://h2:81/p'
+    conf = {'sproxyd_endpoints': ' , '.join([endpoint1, endpoint2])}
+    obj_serv = swift_scality_backend.server.app_factory(conf)
+
+    assert frozenset([
+        urlparse.urlparse(endpoint1),
+        urlparse.urlparse(endpoint2),
+    ]) == obj_serv._get_client_for_policy(0).read_clients[0]._endpoints
+
+
 def test_setup_with_custom_timeout():
     conf = {'sproxyd_host': 'host1:81', 'sproxyd_proxy_timeout': "10.0",
             'sproxyd_conn_timeout': "4.1"}
