@@ -43,6 +43,11 @@ cat > devstack/extras.d/60-scality-swift-diskfile.sh <<-EOF
 	fi
 EOF
 
+if is_ubuntu && [[ $os_CODENAME == "precise" ]]; then
+    # https://review.openstack.org/#/c/246973/ removed support for Ubuntu Precise
+    export FORCE=yes
+fi
+
 # For some reason on Centos 7, there's a segfault in libpython-dev which
 # crashes DevStack. In that case, try again.
 ./devstack/stack.sh || ./devstack/stack.sh
