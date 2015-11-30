@@ -24,13 +24,13 @@ import mock
 import swift.common.exceptions
 import swift.common.utils
 
-from swift_scality_backend.diskfile import DiskFileWriter, \
-    DiskFileReader, DiskFile, DiskFileManager
-from scality_sproxyd_client.exceptions import SproxydHTTPException
-from swift_scality_backend.http_utils import ClientCollection
-from scality_sproxyd_client.sproxyd_client import SproxydClient
 from . import utils
 from .utils import make_client_collection
+from scality_sproxyd_client.exceptions import SproxydHTTPException
+from scality_sproxyd_client.sproxyd_client import SproxydClient
+from swift_scality_backend.diskfile import DiskFileWriter, \
+    DiskFileReader, DiskFile, DiskFileManager
+from swift_scality_backend.http_utils import ClientCollection
 
 
 NEW_SPLICE = 'new_splice'

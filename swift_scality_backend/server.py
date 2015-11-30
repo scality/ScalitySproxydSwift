@@ -213,8 +213,7 @@ class ObjectController(swift.obj.server.ObjectController):
 
     def get_diskfile(self, device, partition, account, container, obj,
                      policy=POLICY_STUB, **kwargs):
-        """
-        Utility method for instantiating a DiskFile object supporting a
+        """Utility method for instantiating a DiskFile object supporting a
         given REST API.
         """
 

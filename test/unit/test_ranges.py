@@ -32,9 +32,9 @@ import eventlet
 import swift_scality_backend.server
 
 import swift.account.server
-import swift.container.server
 import swift.common.ring
 import swift.common.utils
+import swift.container.server
 import swift.proxy.server
 
 # Pre storage-policy compatibility
@@ -46,10 +46,9 @@ except ImportError:
 
 
 class TestRangeHeaders(unittest.TestCase):
-    """
-    Test outgoing range headers to sproxyd from the object server on a partial
-    get of an object. See
-    https://github.com/scality/ScalitySproxydSwift/issues/121 for more details.
+    """Test outgoing range headers to sproxyd from the object server on a partial
+    get of an object. See https://github.com/scality/ScalitySproxydSwift/issues/121
+    for more details.
     """
 
     def setUp(self):
@@ -140,8 +139,7 @@ class TestRangeHeaders(unittest.TestCase):
         shutil.rmtree(self.swift_dir, ignore_errors=1)
 
     def _get(self, path, headers):
-        """
-        Send a HTTP GET request to the swift test proxy.
+        """Send a HTTP GET request to the swift test proxy.
 
         :param path: Request path
         :type path: str
@@ -231,9 +229,7 @@ class TestRangeHeaders(unittest.TestCase):
         self.assertEqual(response_headers['content-length'], '1')
 
     def setup_ring(self, server_name, app, bind_address):
-        """
-        Setup a single replica ring.
-        """
+        """Setup a single replica ring."""
         # Device definition
         server_socket = eventlet.listen(bind_address)
         self.sockets.append(server_socket)

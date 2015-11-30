@@ -107,7 +107,7 @@ class TestStoragePolicyLint(unittest.TestCase):
 
         rc = cli.storage_policy_lint(args)
 
-        self.assertEquals(0, rc)
+        self.assertEqual(0, rc)
 
 
 class TestStoragePolicyQuery(unittest.TestCase):

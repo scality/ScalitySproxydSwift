@@ -24,8 +24,8 @@ import unittest
 import eventlet
 import mock
 
-import swift_scality_backend.http_utils
 from . import utils
+import swift_scality_backend.http_utils
 
 
 class TestSomewhatBufferedFileObject(unittest.TestCase):
@@ -155,7 +155,7 @@ class TestSomewhatBufferedHTTPConnection(unittest.TestCase):
             response_class = \
                 swift_scality_backend.http_utils.SomewhatBufferedHTTPConnection.HTTPResponse
             response_obj = response_class(sock=sock)
-            self.assertEquals(sock.fileno(), response_obj.fileno())
+            self.assertEqual(sock.fileno(), response_obj.fileno())
 
     @mock.patch('socket._socketobject.makefile')
     def test_makefile_not_called(self, mock_makefile):

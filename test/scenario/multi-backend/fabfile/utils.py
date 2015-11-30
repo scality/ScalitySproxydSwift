@@ -1,3 +1,18 @@
+# Copyright (c) 2015 Scality
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os.path
 
 import fabric.contrib.files
@@ -6,8 +21,7 @@ from fabric.api import cd, sudo
 
 
 def render(directory, filenames, local_path_prefix, content):
-    """
-    Render a list of templates in a certain directory and upload them.
+    """Render a list of templates in a certain directory and upload them.
 
     :param directory: local directory holding templates
     :type directory: string
@@ -32,8 +46,7 @@ def render(directory, filenames, local_path_prefix, content):
 
 
 def build_object_ring(swift_user, name, devices, part_power=10, replicas=3):
-    """
-    Build a swift object ring by invocation of `swift-ring-builder`.
+    """Build a swift object ring by invocation of `swift-ring-builder`.
 
     :param swift_user: the user running swift
     :type swift_user: string
@@ -62,8 +75,7 @@ def build_object_ring(swift_user, name, devices, part_power=10, replicas=3):
 
 
 def apt_get(packages):
-    """
-    Install packages through apt-get.
+    """Install packages through apt-get.
 
     :param packages: list of packages for installation
     :type packages: list of strings

@@ -1,6 +1,21 @@
+# Copyright (c) 2015 Scality
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import hashlib
-import json
 import io
+import json
 import os
 
 import swiftclient.client
@@ -12,8 +27,7 @@ AUTH_ENDPOINT = 'http://{host:s}:8080/auth/v1.0'
 
 
 def hash_dataset(directory, manifest_path=None):
-    """
-    SHA1 hash the content of each file in the given directory.
+    """SHA1 hash the content of each file in the given directory.
 
     :param directory: containing directory of files to compute hashes of
     :type directory: string
@@ -39,8 +53,7 @@ def hash_dataset(directory, manifest_path=None):
 
 
 def summarize(failures):
-    """
-    Print a summary of any failures to stdout.
+    """Print a summary of any failures to stdout.
 
     :param failues: mapping of objects with bad integrity to an error string
     :type failures: dict
@@ -54,8 +67,7 @@ def summarize(failures):
 
 
 def create_container(swift_connection, name, storage_policy=None):
-    """
-    Create a container with an optional storage policy.
+    """Create a container with an optional storage policy.
 
     :param swift_connection: connection to Swift
     :type swift_connection: :py:class:`swiftclient.client.Connection`
@@ -71,8 +83,7 @@ def create_container(swift_connection, name, storage_policy=None):
 
 
 def upload(swift_connection, container, files):
-    """
-    Upload a set of files to a container.
+    """Upload a set of files to a container.
 
     :param swift_connection: connection to Swift
     :type swift_connection: :py:class:`swiftclient.client.Connection`
@@ -87,8 +98,7 @@ def upload(swift_connection, container, files):
 
 
 def integrity_check(swift_connection, container, file_hashes):
-    """
-    Download and verify the integrity of a set of files from a bucket.
+    """Download and verify the integrity of a set of files from a bucket.
 
     :param swift_connection: connection to Swift
     :type swift_connection: :py:class:`swiftclient.client.Connection`
@@ -127,8 +137,7 @@ def integrity_check(swift_connection, container, file_hashes):
 @task
 def container_integrity(swift_host, container, directory, storage_policy=None,
                         manifest_path=None, user='test:tester', key='testing'):
-    """
-    Upload files to a container and validate integrity.
+    """Upload files to a container and validate integrity.
 
     :param swift_host: hostname or IP of SAIO installation
     :type swift_host: string
@@ -167,8 +176,7 @@ def container_integrity(swift_host, container, directory, storage_policy=None,
 @task
 def container_by_manifest(swift_host, container, manifest_path,
                           user='test:tester', key='testing'):
-    """
-    Validate the integrity of the files in a container from a manifest.
+    """Validate the integrity of the files in a container from a manifest.
 
     :param swift_host: hostname or IP of SAIO installation
     :type swift_host: string

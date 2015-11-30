@@ -115,8 +115,7 @@ class DiskFileWriter(object):
             self._name, metadata)
 
     def commit(self, timestamp):
-        """
-        Perform any operations necessary to mark the object as durable.
+        """Perform any operations necessary to mark the object as durable.
 
         :param timestamp: object put timestamp, an instance of
                           :class:`~swift.common.utils.Timestamp`
@@ -207,8 +206,7 @@ class DiskFileReader(object):
 
     @utils.trace
     def app_iter_range(self, start, stop):
-        """
-        Iterate over a range.
+        """Iterate over a range.
 
         :param start: First byte to read from (inclusive)
         :type start: int
@@ -375,8 +373,7 @@ class DiskFile(object):
 
 
 class DiskFileManager(object):
-    """
-    Management class for devices, providing common place for shared parameters
+    """Management class for devices, providing common place for shared parameters
     and methods not provided by the DiskFile class (which primarily services
     the object server REST API layer).
 
@@ -385,7 +382,8 @@ class DiskFileManager(object):
     """
 
     def __init__(self, conf, logger):
-        """
+        """Init method
+
         :param conf: caller provided configuration object
         :param logger: caller provided logger
         """

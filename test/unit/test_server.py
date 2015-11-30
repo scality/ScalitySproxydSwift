@@ -34,8 +34,7 @@ from . import utils
 
 
 def test_api_compatible():
-    '''
-    Test whether `swift_scality_backend.server.app_factory`'s result is
+    '''Test whether `swift_scality_backend.server.app_factory`'s result is
     API-compatible with `swift.obj.server.app_factory`'s result
     '''
     whitelist = [

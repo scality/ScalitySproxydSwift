@@ -1,3 +1,18 @@
+# Copyright (c) 2015 Scality
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 import saio
@@ -9,8 +24,7 @@ from fabric.context_managers import cd, hide, prefix, settings
 
 @task
 def swift(swift_user):
-    """
-    Bootstrap a SAIO installation.
+    """Bootstrap a SAIO installation.
 
     :param swift_user: the user to run swift as
     :type swift_user: string
@@ -37,8 +51,7 @@ def swift(swift_user):
 
 @task
 def ring():
-    """
-    Bootstrap Scality RING (environment variable `SCAL_PASS` must be exported).
+    """Bootstrap Scality RING (environment variable `SCAL_PASS` must be exported).
 
     The environment variable `SCAL_PASS` is expected to hold username:password
     for fetching scality packages.
@@ -72,8 +85,7 @@ def ring():
 
 @task
 def scality_storage_policy(swift_user, sproxyd_endpoint):
-    """
-    Install a storage policy backed by Scality RING.
+    """Install a storage policy backed by Scality RING.
 
     :param swift_user: the user swift is running as
     :type swift_user: string

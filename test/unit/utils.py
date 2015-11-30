@@ -29,8 +29,7 @@ from scality_sproxyd_client.sproxyd_client import SproxydClient
 
 
 def skipIf(condition, reason):
-    """
-    A `skipIf` decorator.
+    """A `skipIf` decorator.
 
     Similar to `unittest.skipIf`, for Python 2.6 compatibility.
     """
