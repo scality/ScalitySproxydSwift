@@ -20,6 +20,7 @@ import itertools
 import httplib
 import pickle
 import StringIO
+import time
 import unittest
 import urllib
 import weakref
@@ -377,6 +378,16 @@ class TestDiskFile(unittest.TestCase):
         df.open()
 
         self.assertEqual({'name': 'o'}, df._metadata)
+
+    @mock.patch('swift_scality_backend.diskfile.SproxydFileSystem.get_meta')
+    def test_open_expired_file(self, mock_get_meta):
+        mock_get_meta.return_value = {'X-Delete-At': time.time() - 10}
+
+        sfs = SproxydFileSystem({}, mock.Mock())
+        df = DiskFile(sfs, 'a', 'c', 'o')
+
+        self.assertRaises(swift.common.exceptions.DiskFileExpired, df.open)
+        mock_get_meta.assert_called_once_with('a/c/o')
 
     def test_get_metadata_when_diskfile_not_open(self):
         sfs = SproxydFileSystem({}, mock.Mock())
