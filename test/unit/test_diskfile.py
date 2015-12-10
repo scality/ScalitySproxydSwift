@@ -18,6 +18,7 @@
 import httplib
 import logging
 import StringIO
+import time
 import unittest
 
 import mock
@@ -264,6 +265,16 @@ class TestDiskFile(unittest.TestCase):
         df.open()
 
         self.assertEqual({'name': 'o'}, df._metadata)
+
+    @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta')
+    def test_open_expired_file(self, mock_get_meta):
+        mock_get_meta.return_value = {'X-Delete-At': time.time() - 10}
+
+        client_collection = make_client_collection()
+        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+                      logger=logging.root)
+        self.assertRaises(swift.common.exceptions.DiskFileExpired, df.open)
+        mock_get_meta.assert_called_once_with('a/c/o')
 
     def test_get_metadata_when_diskfile_not_open(self):
         client_collection = make_client_collection()
