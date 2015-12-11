@@ -33,6 +33,21 @@ import swift_scality_backend.utils
 POLICY_STUB = object()
 
 
+class ScalityDiskFileRouter(object):
+    """
+    Replacement for Swift's DiskFileRouter object.
+    Always returns Scality's DiskFileManager implementation.
+
+    Copied from SwiftOnFile::obj/server.py
+    """
+    def __init__(self, *args, **kwargs):
+        self.manager_cls = swift_scality_backend.diskfile.DiskFileManager(
+            *args, **kwargs)
+
+    def __getitem__(self, policy):
+        return self.manager_cls
+
+
 class ObjectController(swift.obj.server.ObjectController):
     """Implements the WSGI application for the Scality Object Server."""
 
@@ -52,6 +67,9 @@ class ObjectController(swift.obj.server.ObjectController):
 
         :param conf: WSGI configuration parameter
         """
+        # Replaces Swift's DiskFileRouter object reference with ours.
+        self._diskfile_router = ScalityDiskFileRouter(conf, self.logger)
+
         # New style configuration expects
         # sproxyd_endpoints = http://sproxyd1:port/path1, http://sproxyd2:port/path2
         # in object-server.conf

@@ -19,6 +19,7 @@
 import contextlib
 import httplib
 import operator
+import time
 import urllib
 import urlparse
 
@@ -293,6 +294,16 @@ class DiskFile(object):
             raise swift.common.exceptions.DiskFileDeleted()
 
         self._metadata = metadata or {}
+
+        try:
+            x_delete_at = int(self._metadata['X-Delete-At'])
+        except KeyError:
+            pass
+        else:
+            if x_delete_at <= time.time():
+                raise swift.common.exceptions.DiskFileExpired(
+                    metadata=self._metadata)
+
         return self
 
     @utils.trace
