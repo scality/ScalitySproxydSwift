@@ -15,6 +15,7 @@
 
 """Tests for swift_scality_backend.diskfile"""
 
+import hashlib
 import httplib
 import logging
 import StringIO
@@ -237,23 +238,34 @@ class TestDiskFileReader(unittest.TestCase):
 class TestDiskFile(unittest.TestCase):
     """Tests for swift_scality_backend.diskfile.DiskFile"""
 
+    @staticmethod
+    def hash_str(strings):
+        "Get a SHA1 hex hash of the iterable of `str` passed as arguments"
+
+        sha1 = hashlib.sha1()
+        for string in strings:
+            sha1.update(string)
+        return sha1.hexdigest()
+
     def test_init_quotes_object_path(self):
-        account, container, obj = 'a', '@/', '/ob/j'
+        acc, cont, obj = 'a', '@/', '/ob/j'
 
         sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock.Mock())
-        df = DiskFile(sproxyd_client, account, container, obj,
+        df = DiskFile(sproxyd_client, acc, cont, obj,
                       use_splice=False, logger=logging.root)
-        self.assertEqual('a/%40%2F/%2Fob%2Fj', df._name)
+        self.assertEqual(self.hash_str([acc, cont, obj]), df._name)
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value=None)
     def test_open_when_no_metadata(self, mock_get_meta):
+        acc, cont, obj = 'a', 'c', 'o'
+
         client_collection = make_client_collection()
-        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+        df = DiskFile(client_collection, acc, cont, obj, use_splice=False,
                       logger=logging.root)
 
         self.assertRaises(swift.common.exceptions.DiskFileDeleted, df.open)
-        mock_get_meta.assert_called_once_with('a/c/o')
+        mock_get_meta.assert_called_once_with(self.hash_str([acc, cont, obj]))
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta',
                 return_value={'name': 'o'})
@@ -268,13 +280,14 @@ class TestDiskFile(unittest.TestCase):
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta')
     def test_open_expired_file(self, mock_get_meta):
+        acc, cont, obj = 'a', 'c', 'o'
         mock_get_meta.return_value = {'X-Delete-At': time.time() - 10}
 
         client_collection = make_client_collection()
-        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+        df = DiskFile(client_collection, acc, cont, obj, use_splice=False,
                       logger=logging.root)
         self.assertRaises(swift.common.exceptions.DiskFileExpired, df.open)
-        mock_get_meta.assert_called_once_with('a/c/o')
+        mock_get_meta.assert_called_once_with(self.hash_str([acc, cont, obj]))
 
     def test_get_metadata_when_diskfile_not_open(self):
         client_collection = make_client_collection()
@@ -315,23 +328,28 @@ class TestDiskFile(unittest.TestCase):
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.put_meta')
     def test_write_metadata(self, mock_put_meta):
+        acc, cont, obj = 'a', 'c', 'o'
+
         client_collection = make_client_collection()
-        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+        df = DiskFile(client_collection, acc, cont, obj, use_splice=False,
                       logger=logging.root)
 
         df.write_metadata({'k': 'v'})
 
-        mock_put_meta.assert_called_once_with('a/c/o', {'k': 'v'})
+        mock_put_meta.assert_called_once_with(self.hash_str([acc, cont, obj]),
+                                              {'k': 'v'})
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.del_object')
     def test_delete(self, mock_del_object):
+        acc, cont, obj = 'a', 'c', 'o'
+
         client_collection = make_client_collection()
-        df = DiskFile(client_collection, 'a', 'c', 'o', use_splice=False,
+        df = DiskFile(client_collection, acc, cont, obj, use_splice=False,
                       logger=logging.root)
 
         df.delete("ignored")
 
-        mock_del_object.assert_called_once_with('a/c/o')
+        mock_del_object.assert_called_once_with(self.hash_str([acc, cont, obj]))
 
     @utils.skipIf(not hasattr(swift.common.utils, 'Timestamp'), 'Swift2+ only')
     def test_timestamps_when_no_metadata(self):

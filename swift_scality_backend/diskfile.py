@@ -17,10 +17,10 @@
 """ Sproxyd Disk File Interface for Swift Object Server"""
 
 import contextlib
+import hashlib
 import httplib
 import operator
 import time
-import urllib
 import urlparse
 
 import eventlet
@@ -253,14 +253,12 @@ class DiskFile(object):
 
     def __init__(self, client_collection, account, container, obj, use_splice,
                  logger):
-        # We quote separately each part and join parts with a plain forward
-        # slash. Note that `urllib.quote(_, '')` escapes forward slashes.
-        # Escaping `/` in addition to configuring Apache with
-        # `AllowEncodedSlashes NoDecode` makes sure that a Swift object named
-        # 'my//object' is treated by the backend differently than an object
-        # named 'my/object'.
-        self._name = '/'.join(urllib.quote(part, '')
-                              for part in (account, container, obj))
+        # We hash the account, container and object name so that no 'special'
+        # character will get in our way.
+        sha1 = hashlib.sha1()
+        for part in [account, container, obj]:
+            sha1.update(part)
+        self._name = sha1.hexdigest()
         self._metadata = None
         self._client_collection = client_collection
         self._logger = logger
