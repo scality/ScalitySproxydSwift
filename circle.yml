@@ -6,6 +6,9 @@ checkout:
     - git fetch --tags
 
 dependencies:
+  pre:
+    # Required to build PyECLib > 1.07
+    - sudo apt-get install --yes liberasurecode-dev
   cache_directories:
     - ~/ScalitySproxydSwift/.tox
   override:
