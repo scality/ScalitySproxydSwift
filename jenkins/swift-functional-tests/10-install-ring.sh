@@ -1,19 +1,6 @@
 #!/bin/bash -xue
 
-
-function get_AllowEncodedSlashes {
-    if is_ubuntu; then
-        echo "$UBUNTU_AllowEncodedSlashes"
-    elif is_centos; then
-        echo "$CENTOS_AllowEncodedSlashes"
-    else
-        echo "Unkown distribution"
-        return 1
-    fi
-}
-
 source jenkins/openstack-ci-scripts/jenkins/distro-utils.sh
-AllowEncodedSlashes=$(get_AllowEncodedSlashes)
 
 SUP_ADMIN_LOGIN="myName"
 SUP_ADMIN_PASS="myPass"
