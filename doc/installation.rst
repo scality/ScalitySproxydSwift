@@ -35,13 +35,3 @@ be installed before installing this package.
        [app:object-server]
        sproxyd_endpoints = http://172.24.4.3:81/proxy/bparc,http://172.24.4.4:81/proxy/bparc
        splice = yes
-
-4. Configure the webserver in front of Scality Sproxyd (usually Apache) to
-   accept encoded slashes (`/`). Swift object name can contain one or several
-   slashes that must be encoded before being sent to Sproxyd. To allow encoded
-   slashes, edit your Apache configuration (or the Sproxyd virtual host) and
-   add the following line:
-
-    .. code-block:: apacheconf
-
-       AllowEncodedSlashes NoDecode

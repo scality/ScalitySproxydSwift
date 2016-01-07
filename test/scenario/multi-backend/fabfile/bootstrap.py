@@ -50,7 +50,6 @@ def ring():
         'INTERNAL_MGMT_PASS': 'admin',
         'HOST_IP': env.host,
         'SCAL_PASS': os.environ['SCAL_PASS'],
-        'AllowEncodedSlashes': 'NoDecode',
     }
     export_vars = ('{0:s}={1:s}'.format(k, v) for k, v in install_env.items())
     export_cmd = 'export {0:s}'.format(' '.join(export_vars))

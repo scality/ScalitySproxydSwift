@@ -20,6 +20,7 @@ Contents:
 
    installation
    supported_distros
+   misc
    api/modules
 
 
