@@ -83,7 +83,9 @@ class ObjectController(swift.obj.server.ObjectController):
                 'http://%s/%s/' % (h, sproxyd_path)
                 for h in swift_scality_backend.utils.split_list(conf['sproxyd_host'])]
 
-        float_or_none = lambda v: float(v) if v is not None else None
+        def float_or_none(value):
+            return float(value) if value is not None else None
+
         self._conn_timeout = float_or_none(conf.get('sproxyd_conn_timeout'))
         self._read_timeout = float_or_none(conf.get('sproxyd_proxy_timeout'))
 
