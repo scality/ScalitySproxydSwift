@@ -9,6 +9,10 @@ cat > devstack/local.conf <<-EOF
 	[[local|localrc]]
 	DATABASE_PASSWORD=testtest; RABBIT_PASSWORD=testtest; SERVICE_TOKEN=testtest; SERVICE_PASSWORD=testtest; ADMIN_PASSWORD=testtest; SWIFT_HASH=011688b44136573e209e; SCREEN_LOGDIR=\${DEST}/logs
 	disable_all_services; enable_service key mysql s-proxy s-object s-container s-account tempest
+	# 167.88.149.196 is a physical server in the Scality OpenStack Lab. It hosts a copy
+	# of github.com/scality/devstack-plugin-scality to avoid Github's rate limiting.
+	enable_plugin scality git://167.88.149.196/devstack-plugin-scality
+	SCALITY_SPROXYD_ENDPOINTS=http://127.0.0.1:81/proxy/bpchord
 	[[post-config|\${SWIFT_CONF_DIR}/proxy-server.conf]]
 	[filter:versioned_writes]
 	allow_versioned_writes = true
