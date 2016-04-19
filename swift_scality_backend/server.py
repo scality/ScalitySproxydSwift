@@ -101,7 +101,7 @@ class ObjectController(swift.obj.server.ObjectController):
                     {'ip': ip, 'port': port, 'dev': contdevice})
         # FIXME: For now don't handle async updates
 
-    def REPLICATE(*_args, **_kwargs):
+    def REPLICATE(ctrl=None, *_args, **_kwargs):
         """Handle REPLICATE requests for the Swift Object Server.
 
         This is used by the object replicator to get hashes for directories.
