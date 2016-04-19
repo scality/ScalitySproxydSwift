@@ -7,7 +7,7 @@ be installed before installing this package.
 
 0. Download and uncompress the source code of this project. All the releases for this
    project can be found here_.
-   For now the recommended version to use is the latest of the 0.3 branch.
+   For now the recommended version to use is the latest of the 0.4 branch.
 
 .. _here: https://github.com/scality/ScalitySproxydSwift/releases
 
