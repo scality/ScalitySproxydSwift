@@ -23,21 +23,8 @@ cat > devstack/local.conf <<-EOF
 	sproxyd_path = /proxy/bpchord
 EOF
 
-# stable/juno is broken. Changes in DevStack and in Swift are required but
-# upstreaming the fixes is not practical.
-if [[ ${DEVSTACK_BRANCH} == "stable/juno" ]]; then
-	cat > devstack/extras.d/10-fix-scality.sh <<-EOF
-		if [[ "\$1" == "stack" && "\$2" == "install" ]]; then
-		    pip_install_gr python-novaclient; pip_install_gr python-cinderclient; pip_install_gr python-glanceclient; pip_install_gr python-neutronclient
-		    if is_service_enabled swift; then
-		        cd /opt/stack/swift
-		        sed -i 's/ignore-errors = True/ignore_errors = True/' .coveragerc
-		        grep -q python-keystoneclient test-requirements.txt || echo 'python-keystoneclient>=0.10.0,<1.2.0' >> test-requirements.txt
-		        grep -q 'passenv = SWIFT_' tox.ini || sed -i '/commands = nosetests {posargs:test\/unit}/ a\passenv = SWIFT_* *_proxy' tox.ini
-		        cd -
-		    fi
-		fi
-	EOF
+if [[ ${DEVSTACK_BRANCH} == "stable/kilo" ]] && is_centos; then
+    export RHEL7_RDO_REPO_RPM=http://mirror.centos.org/centos/7/cloud/x86_64/openstack-kilo/centos-release-openstack-kilo-2.el7.noarch.rpm
 fi
 
 cat > devstack/extras.d/60-scality-swift-diskfile.sh <<-EOF
