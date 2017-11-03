@@ -31,6 +31,7 @@ import swift_scality_backend.policy_configuration
 import swift_scality_backend.utils
 
 POLICY_STUB = object()
+FRAG_PREFS_STUB = object()
 
 
 class ScalityDiskFileRouter(object):
@@ -232,7 +233,7 @@ class ObjectController(swift.obj.server.ObjectController):
         return self._clients[policy_idx]
 
     def get_diskfile(self, device, partition, account, container, obj,
-                     policy=POLICY_STUB, **kwargs):
+                     policy=POLICY_STUB, frag_prefs=FRAG_PREFS_STUB, **kwargs):
         """
         Utility method for instantiating a DiskFile object supporting a
         given REST API.

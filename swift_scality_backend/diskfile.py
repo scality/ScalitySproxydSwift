@@ -382,6 +382,13 @@ class DiskFile(object):
 
         data_timestamp = timestamp
 
+        @property
+        def durable_timestamp(self):
+            return None
+
+        @property
+        def fragments(self):
+            return None
 
 class DiskFileManager(object):
     """
