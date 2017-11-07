@@ -175,7 +175,7 @@ class DiskFileReader(object):
             try:
                 conn.putrequest('GET', object_url.path, skip_host=False)
                 conn.endheaders()
-            except:
+            except:  # noqa
                 conn.close()
                 raise
 
@@ -389,6 +389,7 @@ class DiskFile(object):
         @property
         def fragments(self):
             return None
+
 
 class DiskFileManager(object):
     """

@@ -137,12 +137,17 @@ def test_get_diskfile():
 _mock_policy_config_file = mock.mock_open()
 
 _real_open = open
+
+
 def _open(name, arg):
     if name == os.devnull:
         return _real_open(name, arg)
     else:
         raise IOError(errno.ENOENT, 'Mock')
+
+
 _mock_policy_config_file.side_effect = _open
+
 del _open
 
 
