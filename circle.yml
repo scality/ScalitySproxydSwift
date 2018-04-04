@@ -13,7 +13,7 @@ dependencies:
     - ~/ScalitySproxydSwift/.tox
   override:
     - pip install tox coverage
-    - pyenv local 2.7.10 2.6.8
+    - pyenv local 2.7.10
     # Pre creates the venv so that dependencies are fetched and cached
     # (caching happens right after the dependency step)
     - tox --notest
