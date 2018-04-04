@@ -42,7 +42,7 @@ def splice_socket_to_socket(fd_in, fd_out, length=None):
         try:
             with open('/proc/sys/fs/pipe-max-size', 'r') as fd:
                 MAX_PIPE_SIZE = int(fd.read().strip())
-        except:
+        except (IOError, ValueError):
             logging.getLogger(__name__).exception(
                 'Unable to read max_pipe_size')
 

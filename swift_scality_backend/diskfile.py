@@ -175,7 +175,7 @@ class DiskFileReader(object):
             try:
                 conn.putrequest('GET', object_url.path, skip_host=False)
                 conn.endheaders()
-            except:
+            except:  # noqa
                 conn.close()
                 raise
 
@@ -381,6 +381,14 @@ class DiskFile(object):
             return swift.common.utils.Timestamp(self._metadata.get('X-Timestamp'))
 
         data_timestamp = timestamp
+
+        @property
+        def durable_timestamp(self):
+            return None
+
+        @property
+        def fragments(self):
+            return None
 
 
 class DiskFileManager(object):

@@ -4,3 +4,4 @@ coverage
 nose
 git+https://github.com/scality/scality-sproxyd-client#egg=scality-sproxyd-client
 mock>=1.0
+eventlet<0.21

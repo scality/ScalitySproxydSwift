@@ -17,6 +17,7 @@
 import distutils.spawn
 import setuptools
 import subprocess
+import sys
 
 import swift_scality_backend
 
@@ -51,6 +52,8 @@ def get_version():
                '--match', '%s*' % prefix]
 
         result = check_output(cmd).strip()
+        if sys.version_info >= (3, 0):
+            result = str(result, 'utf-8')
         assert result.startswith(prefix)
 
         return result[len(prefix):]
