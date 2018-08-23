@@ -1,0 +1,70 @@
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: jgagnaire/scalitysproxydswift
+    working_directory: ~/ScalitySproxydSwift
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/ScalitySproxydSwift
+
+      # Fetch the complete repository. Required to get the tags and
+      # properly install the package with the correct version number.
+      - run:
+         name: Fetch the complete repository
+         command: |
+           git fetch --unshallow || true
+           git fetch --tags
+
+      - run:
+         name: Create the tox venv
+         command: tox --notest
+
+      - persist_to_workspace:
+         root: /root
+         paths: ScalitySproxydSwift
+
+  test:
+    docker:
+      - image: jgagnaire/scalitysproxydswift
+    working_directory: ~/ScalitySproxydSwift
+    steps:
+      - attach_workspace:
+         at: /root
+
+      - run:
+         name: Prepare coverage analysis
+         command: coverage erase
+
+      - run:
+         name: Run the tests with tox
+         command: tox -v -- --with-xunit
+
+      - run:
+         name: Generate coverage analysis report
+         command: coverage html
+
+      - run:
+         name: Create and populate tests-result directory
+         command: |
+           mkdir test-results
+           mv nosetests-*.xml test-results/
+           mv htmlcov test-results/
+
+      - store_test_results:
+          path: test-results
+
+      - store_artifacts:
+          path: test-results
+
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
+      - test:
+          requires:
+            - build
