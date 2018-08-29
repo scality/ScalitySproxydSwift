@@ -341,6 +341,8 @@ class DiskFile(object):
             self._metadata['mf'] = metadata['mf']
         else:
             self._metadata = metadata
+            self._metadata['df'] = copy.copy(metadata)
+            self._metadata['mf'] = {}
 
         try:
             x_delete_at = int(self._metadata['X-Delete-At'])
@@ -462,8 +464,6 @@ class DiskFile(object):
         if self._metadata is None:
             self._metadata = self.client_collection.try_read(
                 lambda client: client.get_meta(self._name))
-        if 'mf' not in self._metadata:
-            return None
         return self._metadata['mf']
 
     def get_datafile_metadata(self):
@@ -475,8 +475,6 @@ class DiskFile(object):
         if self._metadata is None:
             self._metadata = self.client_collection.try_read(
                 lambda client: client.get_meta(self._name))
-        if 'df' not in self._metadata:
-            return None
         return self._metadata['df']
 
     @property
@@ -498,10 +496,7 @@ class DiskFile(object):
         """
         if self._metadata is None:
             raise swift.common.exceptions.DiskFileNotOpen()
-        if 'df' in self._metadata:
-            t = self._metadata['df'].get('X-Timestamp')
-        else:
-            t = self._metadata.get('X-Timestamp')
+        t = self._metadata['df'].get('X-Timestamp')
         return swift.common.utils.Timestamp(t)
 
     @property
@@ -515,10 +510,7 @@ class DiskFile(object):
         """
         if self._metadata is None:
             raise swift.common.exceptions.DiskFileNotOpen()
-        if 'df' in self._metadata:
-            t = self._metadata['df'].get('X-Timestamp')
-        else:
-            t = self._metadata.get('X-Timestamp')
+        t = self._metadata['df'].get('X-Timestamp')
         return swift.common.utils.Timestamp(t)
 
     @property
@@ -538,9 +530,6 @@ class DiskFile(object):
         """
         if self._metadata is None:
             raise swift.common.exceptions.DiskFileNotOpen()
-        if 'Content-Type-Timestamp' not in self._metadata \
-           and 'df' not in self._metadata:
-            return None
         t = self._metadata.get('Content-Type-Timestamp',
                                self._metadata['df'].get('X-Timestamp'))
         return swift.common.utils.Timestamp(t)
