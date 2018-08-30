@@ -179,7 +179,13 @@ class TestDiskFileWriter(unittest.TestCase):
         mock_release_conn = mock_http.return_value[1]
         mock_release_conn.assert_called_once_with()
 
-        mock_put_meta.assert_called_with('obj', {'meta1': 'val', 'name': 'obj'})
+        mock_put_meta.assert_called_with('obj', {
+            'df': {'meta1': 'val'},
+            'meta1': 'val',
+            'mf': {},
+            'ETag': 'd41d8cd98f00b204e9800998ecf8427e',
+            'name': 'obj'
+        })
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_http_conn_for_put',
                 return_value=(FakeHTTPConn(), mock.Mock()))
@@ -276,7 +282,7 @@ class TestDiskFile(unittest.TestCase):
 
         df.open()
 
-        self.assertEqual({'name': 'o'}, df._metadata)
+        self.assertEqual({'name': 'o', 'mf': {}, 'df': {'name': 'o'}}, df._metadata)
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.get_meta')
     def test_open_expired_file(self, mock_get_meta):
@@ -336,8 +342,11 @@ class TestDiskFile(unittest.TestCase):
 
         df.write_metadata({'k': 'v'})
 
-        mock_put_meta.assert_called_once_with(self.hash_str([acc, cont, obj]),
-                                              {'k': 'v'})
+        mock_put_meta.assert_called_once_with(self.hash_str([acc, cont, obj]), {
+            'df': {'name': 'ae541120074a053234ef14e1b050ee3a7433099c'},
+            'k': 'v',
+            'mf': {'k': 'v'}
+        })
 
     @mock.patch('scality_sproxyd_client.sproxyd_client.SproxydClient.del_object')
     def test_delete(self, mock_del_object):
