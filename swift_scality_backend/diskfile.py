@@ -22,6 +22,7 @@ import httplib
 import operator
 import time
 import urlparse
+import copy
 
 import eventlet
 import eventlet.green.os
@@ -29,6 +30,7 @@ import swift.common.bufferedhttp
 import swift.common.exceptions
 import swift.common.swob
 import swift.common.utils
+from swift.common.request_helpers import is_sys_meta
 
 try:
     import swift.common.splice
@@ -40,6 +42,11 @@ from scality_sproxyd_client.exceptions import SproxydHTTPException
 import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
+
+# These are system-set metadata keys that cannot be changed with a POST.
+# They should be lowercase.
+RESERVED_DATAFILE_META = {'content-length', 'deleted', 'etag'}
+DATAFILE_SYSTEM_META = {'x-static-large-object'}
 
 
 class DiskFileWriter(object):
@@ -60,8 +67,9 @@ class DiskFileWriter(object):
         self._client_collection = client_collection
         self._name = name
         self._logger = logger
-
         self._upload_size = 0
+        self._md5sum = hashlib.md5()
+
         headers = {
             'transfer-encoding': 'chunked'
         }
@@ -84,6 +92,7 @@ class DiskFileWriter(object):
         """
         self._conn.send('%x\r\n%s\r\n' % (len(chunk), chunk))
         self._upload_size += len(chunk)
+        self._md5sum.update(chunk)
         return self._upload_size
 
     @utils.trace
@@ -109,11 +118,20 @@ class DiskFileWriter(object):
             raise
 
         self._release_conn()
-        metadata['name'] = self._name
+
+        metadata_to_put = copy.copy(metadata)
+        metadata_to_put['name'] = self._name
+        metadata_to_put['ETag'] = self._md5sum.hexdigest()
+
+        metadata_to_put.update({
+            'df': metadata,
+            'mf': {},
+        })
+
         self.logger.debug("Data successfully written for object : %r", self._name)
 
         self._client_collection.get_write_client().put_meta(
-            self._name, metadata)
+            self._name, metadata_to_put)
 
     def commit(self, timestamp):
         """
@@ -277,6 +295,31 @@ class DiskFile(object):
         return ret % (self._client_collection, self._account, self._container,
                       self._obj, self._use_splice, self._logger)
 
+    @staticmethod
+    def merge_df_mf_metadata(df_md_source, mf_md_source):
+        """Merge the datafile metadata and metafile metadata dictionaries together.
+
+        Datafile metadata refers to metadata originally included when the object
+        was first PUT, and does not include metadata set by any subsequent POST.
+
+        Metafile metadata refers to metadata written by a POST, and does not
+        include any persistent metadata that was set by the original PUT.
+        """
+        md_dest = {}
+
+        if not mf_md_source:
+            md_dest.update(df_md_source)
+        else:
+            sys_metadata = {
+                key: val for key, val in df_md_source.items()
+                if key.lower() in (RESERVED_DATAFILE_META | DATAFILE_SYSTEM_META) or
+                is_sys_meta('object', key)
+            }
+            md_dest.update(mf_md_source)
+            md_dest.update(sys_metadata)
+
+        return md_dest
+
     @utils.trace
     def open(self):
         """Open the file and read the metadata.
@@ -291,7 +334,15 @@ class DiskFile(object):
         if metadata is None:
             raise swift.common.exceptions.DiskFileDeleted()
 
-        self._metadata = metadata or {}
+        # 'df' subdictionary refers to DataFile metadata, 'mf' to MetaFile metadata
+        if 'df' in metadata and 'mf' in metadata:
+            self._metadata = DiskFile.merge_df_mf_metadata(metadata['df'], metadata['mf'])
+            self._metadata['df'] = metadata['df']
+            self._metadata['mf'] = metadata['mf']
+        else:
+            self._metadata = metadata
+            self._metadata['df'] = copy.copy(metadata)
+            self._metadata['mf'] = {}
 
         try:
             x_delete_at = int(self._metadata['X-Delete-At'])
@@ -322,11 +373,15 @@ class DiskFile(object):
         """
         if self._metadata is None:
             raise swift.common.exceptions.DiskFileNotOpen()
-        return self._metadata
+        md_to_return = copy.deepcopy(self._metadata)
+        md_to_return.pop('df')
+        md_to_return.pop('mf')
+        return md_to_return
 
     @utils.trace
     def read_metadata(self):
-        """Return the metadata for an object.
+        """Return the metadata for an object without requiring the caller
+        to open the object first.
 
         :returns: metadata dictionary for an object
         """
@@ -357,9 +412,37 @@ class DiskFile(object):
         yield DiskFileWriter(self.client_collection, self._name, self.logger)
 
     @utils.trace
-    def write_metadata(self, metadata):
+    def write_metadata(self, md_to_add):
         """Write a block of metadata to an object."""
-        self.client_collection.get_write_client().put_meta(self._name, metadata)
+
+        if not self._metadata:
+            md_to_write = copy.deepcopy(md_to_add)
+            md_to_write.update({
+                'df': {
+                    'name': self._name,
+                },
+                'mf': md_to_add
+            })
+            self.client_collection.get_write_client().put_meta(self._name, md_to_write)
+            return
+
+        # Keep the most recent Content-Type from either datafile or metafile metadata
+        if 'Content-Type' not in md_to_add and self._metadata is not None and \
+           'Content-Type' in self._metadata['mf'] and \
+           self._metadata['mf']['Content-Type'] != self._metadata['df']['Content-Type'] and \
+           self._metadata['mf']['Content-Type-Timestamp'] > \
+           self._metadata['df']['X-Timestamp']:
+            md_to_add['Content-Type'] = self._metadata['mf']['Content-Type']
+            md_to_add['Content-Type-Timestamp'] = self._metadata['mf']['Content-Type-Timestamp']
+
+        df_md_dict = copy.deepcopy(self._metadata['df'])
+        md_to_write = DiskFile.merge_df_mf_metadata(df_md_dict, md_to_add)
+        md_to_write.update({
+            'df': df_md_dict,
+            'mf': md_to_add,
+        })
+
+        self.client_collection.get_write_client().put_meta(self._name, md_to_write)
 
     @utils.trace
     def delete(self, timestamp):
@@ -372,23 +455,84 @@ class DiskFile(object):
         """
         self.client_collection.get_write_client().del_object(self._name)
 
-    # Class `swift.common.utils.Timestamp` is Swift 2.0+
-    if hasattr(swift.common.utils, 'Timestamp'):
-        @property
-        def timestamp(self):
-            if self._metadata is None:
-                raise swift.common.exceptions.DiskFileNotOpen()
-            return swift.common.utils.Timestamp(self._metadata.get('X-Timestamp'))
+    def get_metafile_metadata(self):
+        """Provide the metafile metadata for a previously opened object as a dictionary.
 
-        data_timestamp = timestamp
+        This is metadata that was written by a POST,
+        and does not include any persistent metadata that was set by the original PUT.
+        """
+        if self._metadata is None:
+            self._metadata = self.client_collection.try_read(
+                lambda client: client.get_meta(self._name))
+        return self._metadata['mf']
 
-        @property
-        def durable_timestamp(self):
-            return None
+    def get_datafile_metadata(self):
+        """Provide the datafile metadata for a previously opened object as a dictionary.
 
-        @property
-        def fragments(self):
-            return None
+        This is metadata that was included when the object was first PUT,
+        and does not include metadata set by any subsequent POST.
+        """
+        if self._metadata is None:
+            self._metadata = self.client_collection.try_read(
+                lambda client: client.get_meta(self._name))
+        return self._metadata['df']
+
+    @property
+    def content_length(self):
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        return self._metadata.get('Content-Length')
+
+    @property
+    def timestamp(self):
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        t = self._metadata.get('X-Timestamp')
+        return swift.common.utils.Timestamp(t)
+
+    @property
+    def data_timestamp(self):
+        """Provides the datafile timestamp
+        """
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        t = self._metadata['df'].get('X-Timestamp')
+        return swift.common.utils.Timestamp(t)
+
+    @property
+    def durable_timestamp(self):
+        """Related to erasure coding storage policy type, not to replication
+        policy type.
+
+        Provides the timestamp of the newest data file found in the object
+        directory, i.e. the one which call to open() populated the self._metadata
+        attribute.
+        """
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        t = self._metadata['df'].get('X-Timestamp')
+        return swift.common.utils.Timestamp(t)
+
+    @property
+    def fragments(self):
+        return None
+
+    @property
+    def content_type(self):
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        return self._metadata.get('Content-Type')
+
+    @property
+    def content_type_timestamp(self):
+        """Provides the content-type timestamp if the Content-Type metadata
+        attribute was ever modified, or the datafile metadata timestamp if not.
+        """
+        if self._metadata is None:
+            raise swift.common.exceptions.DiskFileNotOpen()
+        t = self._metadata.get('Content-Type-Timestamp',
+                               self._metadata['df'].get('X-Timestamp'))
+        return swift.common.utils.Timestamp(t)
 
 
 class DiskFileManager(object):
