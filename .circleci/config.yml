@@ -3,7 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: jgagnaire/scalitysproxydswift
+      - image: scality/scalitysproxydswift
     working_directory: ~/ScalitySproxydSwift
     steps:
       - checkout
@@ -28,7 +28,7 @@ jobs:
 
   test:
     docker:
-      - image: jgagnaire/scalitysproxydswift
+      - image: scality/scalitysproxydswift
     working_directory: ~/ScalitySproxydSwift
     steps:
       - attach_workspace:
