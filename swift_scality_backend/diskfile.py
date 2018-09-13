@@ -285,8 +285,13 @@ class DiskFile(object):
 
         :raise DiskFileDeleted: if it does not exist
         """
-        metadata = self.client_collection.try_read(
-            lambda client: client.get_meta(self._name))
+        try:
+            metadata = self.client_collection.try_read(
+                lambda client: client.get_meta(self._name))
+        except EOFError:
+            self.logger.error('ERROR in DiskFile.open(): metadata not found' +
+                              ' on Scality RING for key %s' % self._name)
+            metadata = None
 
         if metadata is None:
             raise swift.common.exceptions.DiskFileDeleted()
