@@ -1,3 +1,0 @@
-[submodule "jenkins/openstack-ci-scripts"]
-	path = jenkins/openstack-ci-scripts
-	url = https://github.com/Scality/openstack-ci-scripts.git
