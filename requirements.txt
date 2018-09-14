@@ -1,8 +1,8 @@
-# Compatible with Swift Icehouse, Juno, Kilo, Liberty, Mitaka, Newton, Ocata and
-# Pike.
+# Compatible with Swift Icehouse, Juno, Kilo, Liberty, Mitaka, Newton, Ocata, Pike
+# and Queens.
 # We assume a pre-existing Swift installation, so use whatever your system comes
 # with, don't simply install any version
-swift >=1.13.1,<2.16
+swift >=1.13.1,<2.18
 
 # Currently requires scality-sproxyd-client 'master'. This can be retrieved from
 # https://github.com/scality/scality-sproxyd-client
