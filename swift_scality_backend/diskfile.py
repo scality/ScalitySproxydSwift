@@ -175,7 +175,7 @@ class DiskFileReader(object):
             try:
                 conn.putrequest('GET', object_url.path, skip_host=False)
                 conn.endheaders()
-            except:  # noqa
+            except:
                 conn.close()
                 raise
 
