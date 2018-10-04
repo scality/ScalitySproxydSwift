@@ -321,8 +321,11 @@ class DiskFile(object):
         return md_dest
 
     @utils.trace
-    def open(self):
+    def open(self, current_time=None):
         """Open the file and read the metadata.
+
+        :param current_time: Unix time used in checking expiration. If not
+             present, the current time will be used.
 
         This method must populate the _metadata attribute.
 
@@ -354,7 +357,9 @@ class DiskFile(object):
         except KeyError:
             pass
         else:
-            if x_delete_at <= time.time():
+            if current_time is None:
+                current_time = time.time()
+            if x_delete_at <= current_time:
                 raise swift.common.exceptions.DiskFileExpired(
                     metadata=self._metadata)
 
@@ -384,13 +389,15 @@ class DiskFile(object):
         return md_to_return
 
     @utils.trace
-    def read_metadata(self):
+    def read_metadata(self, current_time=None):
         """Return the metadata for an object without requiring the caller
         to open the object first.
 
+        :param current_time: Unix time used in checking expiration. If not
+             present, the current time will be used.
         :returns: metadata dictionary for an object
         """
-        with self.open():
+        with self.open(current_time=current_time):
             return self.get_metadata()
 
     @utils.trace
