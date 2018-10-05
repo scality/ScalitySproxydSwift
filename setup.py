@@ -66,7 +66,7 @@ def get_version():
 
 setuptools.setup(
     name='swift-scality-backend',
-    version='0.4.3',
+    version=get_version(),
     description='Scality Ring backend for OpenStack Swift',
     url='http://www.scality.com/',
     author='Scality Openstack Engineering Team',
