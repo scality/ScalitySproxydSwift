@@ -60,6 +60,8 @@ class ObjectController(swift.obj.server.ObjectController):
         self._policy_configuration = None
         self._policy_0_urls = None
         self._location_preferences = None
+        self._url_password = None
+        self._url_username = None
 
         super(ObjectController, self).__init__(*args, **kwargs)
 
@@ -70,6 +72,9 @@ class ObjectController(swift.obj.server.ObjectController):
         """
         # Replaces Swift's DiskFileRouter object reference with ours.
         self._diskfile_router = ScalityDiskFileRouter(conf, self.logger)
+
+        self._url_username = conf.get('sproxyd_url_username')
+        self._url_password = conf.get('sproxyd_url_password')
 
         # New style configuration expects
         # sproxyd_endpoints = http://sproxyd1:port/path1, http://sproxyd2:port/path2
@@ -147,6 +152,10 @@ class ObjectController(swift.obj.server.ObjectController):
         sproxyd_client_kwargs = {
             'logger': self.logger,
         }
+        if self._url_username is not None:
+            sproxyd_client_kwargs['url_username'] = self._url_username
+        if self._url_password is not None:
+            sproxyd_client_kwargs['url_password'] = self._url_password
         if self._conn_timeout is not None:
             sproxyd_client_kwargs['conn_timeout'] = self._conn_timeout
         if self._read_timeout is not None:
@@ -210,8 +219,8 @@ class ObjectController(swift.obj.server.ObjectController):
                         write_clients.append(clients[endpoints])
                     else:
                         client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                            (endpoint.url for endpoint in endpoints),
-                            self._conn_timeout, self._read_timeout, self.logger)
+                            (endpoint.url for endpoint in endpoints), self._url_username,
+                            self._url_password, self._conn_timeout, self._read_timeout, self.logger)
                         clients[endpoints] = client
 
                         write_clients.append(client)
