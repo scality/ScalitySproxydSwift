@@ -36,6 +36,19 @@ Scality Sproxyd connector. It must be installed before installing this package.
        sproxyd_endpoints = http://172.24.4.3:81/proxy/bparc,http://172.24.4.4:81/proxy/bparc
        splice = yes
 
+   If the IPs targetted by 'sproxyd_endpoints' require HTTP Basic Authentication,
+   also set the following variables in the :file:`object-server.conf` file:
+
+   .. code-block:: ini
+
+       [app:object-server]
+       sproxyd_endpoints = http://172.24.4.3:81/proxy/bparc,http://172.24.4.4:81/proxy/bparc
+       splice = yes
+
+       sproxyd_url_username = testusern@me
+       sproxyd_url_password = test42pa@s?:sword
+
+
 4. (optional, only on a multi-node Swift installation) The target architecture
    looks like:
 
