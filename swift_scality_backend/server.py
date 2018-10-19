@@ -62,6 +62,9 @@ class ObjectController(swift.obj.server.ObjectController):
         self._location_preferences = None
         self._url_password = None
         self._url_username = None
+        self._url_cert_bundle = None
+        self._url_client_cert = None
+        self._url_client_key = None
 
         super(ObjectController, self).__init__(*args, **kwargs)
 
@@ -75,6 +78,9 @@ class ObjectController(swift.obj.server.ObjectController):
 
         self._url_username = conf.get('sproxyd_url_username')
         self._url_password = conf.get('sproxyd_url_password')
+        self._url_cert_bundle = conf.get('sproxyd_url_cert_bundle')
+        self._url_client_cert = conf.get('sproxyd_url_client_cert')
+        self._url_client_key = conf.get('sproxyd_url_client_key')
 
         # New style configuration expects
         # sproxyd_endpoints = http://sproxyd1:port/path1, http://sproxyd2:port/path2
@@ -152,6 +158,12 @@ class ObjectController(swift.obj.server.ObjectController):
         sproxyd_client_kwargs = {
             'logger': self.logger,
         }
+        if self._url_cert_bundle is not None:
+            sproxyd_client_kwargs['url_cert_bundle'] = self._url_cert_bundle
+        if self._url_client_cert is not None:
+            sproxyd_client_kwargs['url_client_cert'] = self._url_client_cert
+        if self._url_client_key is not None:
+            sproxyd_client_kwargs['url_client_key'] = self._url_client_key
         if self._url_username is not None:
             sproxyd_client_kwargs['url_username'] = self._url_username
         if self._url_password is not None:
@@ -219,8 +231,10 @@ class ObjectController(swift.obj.server.ObjectController):
                         write_clients.append(clients[endpoints])
                     else:
                         client = scality_sproxyd_client.sproxyd_client.SproxydClient(
-                            (endpoint.url for endpoint in endpoints), self._url_username,
-                            self._url_password, self._conn_timeout, self._read_timeout, self.logger)
+                            (endpoint.url for endpoint in endpoints), self._url_cert_bundle,
+                            self._url_client_cert, self._url_client_key, self._url_username,
+                            self._url_password, self._conn_timeout, self._read_timeout,
+                            self.logger)
                         clients[endpoints] = client
 
                         write_clients.append(client)
