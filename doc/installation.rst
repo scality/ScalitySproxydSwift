@@ -48,6 +48,29 @@ Scality Sproxyd connector. It must be installed before installing this package.
        sproxyd_url_username = testusern@me
        sproxyd_url_password = test42pa@s?:sword
 
+   Moreover, if the sproxyd endpoints use a self-signed certificate for HTTPS
+   authentication, it is possible to suppress the warnings related to certificate
+   verification by adding the path to the CA certificate bundle in :file:`object-server.conf`:
+
+   .. code-block:: ini
+
+       [app:object-server]
+       sproxyd_endpoints = https://172.24.4.3:81/proxy/bparc
+
+       sproxyd_url_cert_bundle = /home/scality/ca.crt
+
+   Also, if the sproxyd endpoints require certificate authentication from clients,
+   the client certificate and key should also be specified in this file:
+
+   .. code-block:: ini
+
+       [app:object-server]
+       sproxyd_endpoints = https://172.24.4.3:81/proxy/bparc
+
+       sproxyd_url_cert_bundle = /home/scality/ca.crt
+
+       sproxyd_url_client_cert = /home/scality/client.crt
+       sproxyd_url_client_key = /home/scality/client.key
 
 4. (optional, only on a multi-node Swift installation) The target architecture
    looks like:
