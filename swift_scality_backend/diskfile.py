@@ -38,6 +38,7 @@ try:
 except ImportError:
     HAS_NEW_SPLICE = False
 
+from scality_sproxyd_client.utils import get_urllib3
 from scality_sproxyd_client.exceptions import SproxydHTTPException
 import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
@@ -192,6 +193,11 @@ class DiskFileReader(object):
 
             try:
                 conn.putrequest('GET', object_url.path, skip_host=False)
+                if client._url_username and client._url_password:
+                    creds_str = ('%s:%s' % (client._url_username, client._url_password))
+                    basic_auth_header = get_urllib3().util.make_headers(basic_auth=creds_str)
+                    for (key, value) in basic_auth_header.items():
+                        conn.putheader(key,value)
                 conn.endheaders()
             except:  # noqa
                 conn.close()
