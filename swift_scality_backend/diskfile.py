@@ -44,6 +44,8 @@ import swift_scality_backend.http_utils
 import swift_scality_backend.splice_utils
 from swift_scality_backend import utils
 
+urllib3 = get_urllib3()
+
 # These are system-set metadata keys that cannot be changed with a POST.
 # They should be lowercase.
 RESERVED_DATAFILE_META = {'content-length', 'deleted', 'etag'}
@@ -195,9 +197,9 @@ class DiskFileReader(object):
                 conn.putrequest('GET', object_url.path, skip_host=False)
                 if client._url_username and client._url_password:
                     creds_str = ('%s:%s' % (client._url_username, client._url_password))
-                    basic_auth_header = get_urllib3().util.make_headers(basic_auth=creds_str)
+                    basic_auth_header = urllib3.util.make_headers(basic_auth=creds_str)
                     for (key, value) in basic_auth_header.items():
-                        conn.putheader(key,value)
+                        conn.putheader(key, value)
                 conn.endheaders()
             except:  # noqa
                 conn.close()
@@ -317,9 +319,8 @@ class DiskFile(object):
             md_dest.update(df_md_source)
         else:
             sys_metadata = {
-                key: val for key, val in df_md_source.items()
-                if key.lower() in (RESERVED_DATAFILE_META | DATAFILE_SYSTEM_META) or
-                is_sys_meta('object', key)
+                key: val for key, val in df_md_source.items() if key.lower() in
+                (RESERVED_DATAFILE_META | DATAFILE_SYSTEM_META) or is_sys_meta('object', key)
             }
             md_dest.update(mf_md_source)
             md_dest.update(sys_metadata)
@@ -341,8 +342,9 @@ class DiskFile(object):
             metadata = self.client_collection.try_read(
                 lambda client: client.get_meta(self._name))
         except EOFError:
-            self.logger.error('ERROR in DiskFile.open(): metadata not found' +
-                              ' on Scality RING for key %s' % self._name)
+            self.logger.error(
+                'ERROR in DiskFile.open(): metadata not found on Scality RING for key %s'
+                % self._name)
             metadata = None
 
         if metadata is None:
