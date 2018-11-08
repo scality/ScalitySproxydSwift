@@ -72,6 +72,9 @@ Scality Sproxyd connector. It must be installed before installing this package.
        sproxyd_url_client_cert = /home/scality/client.crt
        sproxyd_url_client_key = /home/scality/client.key
 
+**Warning: splicing cannot be used with SSL/TLS encryption, as it would read
+an encrypted data stream instead of the expected raw data**
+
 4. (optional, only on a multi-node Swift installation) The target architecture
    looks like:
 
