@@ -585,13 +585,30 @@ class DiskFileManager(object):
             except AttributeError:  # Old Swift versions
                 system_has_splice = False
 
+        https_used = False
+        sproxyd_endpoints = conf.get('sproxyd_endpoints')
+        if not sproxyd_endpoints:
+            sproxyd_endpoints = conf.get('sproxyd_host', '')
+
+        for sproxyd_url in sproxyd_endpoints.split(','):
+            url = urlparse.urlparse(sproxyd_url)
+            if url.scheme == 'https':
+                https_used = True
+                break
+
+        if conf_wants_splice and https_used:
+            self.logger.warn(
+                "Use of splice() requested (config says \"splice = %s\"), "
+                "but splice() cannot be used with an HTTPS connection "
+                "to sproxyd. splice() will not be used." % conf.get('splice'))
+
         if conf_wants_splice and not system_has_splice:
             self.logger.warn(
                 "Use of splice() requested (config says \"splice = %s\"), "
                 "but the system does not support it. "
                 "splice() will not be used." % conf.get('splice'))
 
-        if conf_wants_splice and system_has_splice:
+        if conf_wants_splice and system_has_splice and not https_used:
             self.use_splice = True
 
     def get_diskfile(self, client_collection, account, container, obj):
