@@ -98,6 +98,14 @@ class DiskFileWriter(object):
         self._md5sum.update(chunk)
         return self._upload_size
 
+    def chunks_finished(self):
+        """
+        Expose internal stats about written chunks.
+
+        :returns: a tuple, (upload_size, etag)
+        """
+        return self._upload_size, self._md5sum.hexdigest()
+
     @utils.trace
     def put(self, metadata):
         """Finalize writing the object.
@@ -143,6 +151,12 @@ class DiskFileWriter(object):
         :param timestamp: object put timestamp, an instance of
                           :class:`~swift.common.utils.Timestamp`
         """
+        pass
+
+    def open(self):
+        pass
+
+    def close(self):
         pass
 
 
@@ -430,6 +444,9 @@ class DiskFile(object):
                      called externally only by the `ObjectController`
         """
         yield DiskFileWriter(self.client_collection, self._name, self.logger)
+
+    def writer(self, size=None):
+        return DiskFileWriter(self.client_collection, self._name, self.logger)
 
     @utils.trace
     def write_metadata(self, md_to_add):
