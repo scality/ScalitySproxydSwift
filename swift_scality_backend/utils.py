@@ -21,6 +21,19 @@ import sys
 DEFAULT_LOGGER = logging.getLogger(__name__)
 
 
+def log_to_file(conf, name, log_to_console, log_route, fmt, logger, adapted_logger):
+    '''
+    Custom log handler function passed to the object-server conf in the CI
+    so that the full backtraces are logged to /tmp/swift_logfile, instead
+    of being truncated in journalctl
+    '''
+    fh = logging.FileHandler('/tmp/swift_logfile')
+    fh.setLevel(logging.WARN)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+
 def trace(f):
     '''Trace calls to a decorated function
 

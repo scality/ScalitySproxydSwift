@@ -1,0 +1,14 @@
+[Unit]
+Description=memcached daemon
+After=network.target
+
+[Service]
+User=scality
+Group=scality
+PermissionsStartOnly=true
+ExecStart=/usr/bin/memcached
+ExecStop=killall memcached
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
