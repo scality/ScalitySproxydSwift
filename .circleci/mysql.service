@@ -1,0 +1,10 @@
+[Unit]
+Description=MySQL
+After=network.target
+
+[Service]
+ExecStart=/usr/sbin/mysqld
+ExecStop=killall mysqld
+
+[Install]
+WantedBy=multi-user.target

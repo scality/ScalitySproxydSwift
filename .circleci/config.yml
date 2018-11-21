@@ -26,7 +26,7 @@ jobs:
          root: /root
          paths: ScalitySproxydSwift
 
-  test:
+  unit-tests:
     docker:
       - image: scality/scalitysproxydswift
     working_directory: ~/ScalitySproxydSwift
@@ -47,17 +47,39 @@ jobs:
          command: coverage html
 
       - run:
-         name: Create and populate tests-result directory
+         name: Create and populate unit-tests-results directory
          command: |
-           mkdir test-results
-           mv nosetests-*.xml test-results/
-           mv htmlcov test-results/
+           mkdir unit-tests-results
+           mv nosetests-*.xml unit-tests-results/
+           mv htmlcov unit-tests-results/
 
       - store_test_results:
-          path: test-results
+          path: unit-tests-results
 
       - store_artifacts:
-          path: test-results
+          path: unit-tests-results
+
+
+  func-tests:
+    machine: true
+    working_directory: /tmp/ScalitySproxydSwift
+    steps:
+      - checkout
+
+      - run:
+         name: Install Swift from master branch, our connector and a local sproxyd
+         command: sudo -E -H .circleci/install_devstack.sh
+
+      - run:
+         name: Run the tests with tox
+         command: sudo -E -H .circleci/run_functests.sh
+
+      - store_test_results:
+          path: func-tests-results
+
+      - store_artifacts:
+          path: func-tests-results
+
 
 
 workflows:
@@ -65,6 +87,7 @@ workflows:
   build_and_test:
     jobs:
       - build
-      - test:
+      - unit-tests:
           requires:
             - build
+      - func-tests
