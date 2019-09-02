@@ -60,9 +60,11 @@ install_required_packages()
 		   rsyslog \
 		   sudo \
 		   xfsprogs \
-		   memcached
+		   memcached \
+		   liberasurecode-dev
 
-    pip install tox
+    # >= 2.9.1 is failing
+    pip install tox==2.3.1
 }
 
 install_required_deps()
@@ -121,7 +123,7 @@ EOF
 pip_reinstall_specific_deps()
 {
     pip uninstall $1 -y
-    if [ $3 -eq 1 ]
+    if [ ! -z "$3" ] && [ $3 -eq 1 ]
     then
 	apt-get remove python-$1 --yes
     fi
@@ -193,6 +195,9 @@ main()
     pip_reinstall_specific_deps urllib3 1.24.1 1
     pip_reinstall_specific_deps requests 2.14.2 0
     pip_reinstall_specific_deps idna 2.5 0
+    pip_reinstall_specific_deps eventlet 0.25.0
+    pip_reinstall_specific_deps tox 3.12.0
+    pip_reinstall_specific_deps cryptography 2.0.2
 
     swift-init --run-dir=/opt/stack/data/swift/run all stop
 

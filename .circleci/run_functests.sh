@@ -25,8 +25,9 @@ main()
     rm -f /etc/boto.cfg
 
     # Create the tests results folder
-    mkdir /tmp/ScalitySproxydSwift/func-tests-results
+    mkdir -p /tmp/ScalitySproxydSwift/func-tests-results
 
+    export UPPER_CONSTRAINTS_FILE="/opt/stack/requirements/upper-constraints.txt"
     # Run functional tests on master branch
     tox -v -epy27 ./test/functional -- --with-xunit
 
