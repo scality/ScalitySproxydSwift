@@ -38,14 +38,14 @@ main()
     git fetch
     for branch in $(git branch -a | grep '/stable/')
     do
-	branch_basename=$(basename $branch)
-	git checkout stable/$branch_basename
-	python setup.py install
-	restart_swift
-	tox -v -epy27 ./test/functional -- --with-xunit
+        branch_basename=$(basename $branch)
+        git checkout stable/$branch_basename
+        python setup.py install
+        restart_swift
+        tox -v -epy27 ./test/functional -- --with-xunit
 
-	# Collect results
-	mv nosetests.xml /tmp/ScalitySproxydSwift/func-tests-results/nosetests-$branch_basename.xml
+        # Collect results
+        mv nosetests.xml /tmp/ScalitySproxydSwift/func-tests-results/nosetests-$branch_basename.xml
     done
 
     # Collect logfiles
