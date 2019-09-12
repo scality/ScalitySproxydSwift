@@ -42,6 +42,7 @@ main()
         git checkout stable/$branch_basename
         python setup.py install
         restart_swift
+        rm -rf ./.tox
         tox -v -epy27 ./test/functional -- --with-xunit
 
         # Collect results
