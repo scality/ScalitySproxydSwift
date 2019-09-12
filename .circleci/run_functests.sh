@@ -3,8 +3,6 @@
 set -e
 set -x
 
-SUPPORTED_BRANCHES="stable/ocata stable/pike stable/queens"
-
 restart_swift()
 {
     swift-init --run-dir=/opt/stack/data/swift/run all stop
@@ -38,8 +36,7 @@ main()
 
     # And then on each stable/* branch
     git fetch
-    # for branch in $(git branch -a | grep '/stable/')
-    for branch in $SUPPORTED_BRANCHES
+    for branch in $(git branch -a | grep '/stable/')
     do
         branch_basename=$(basename $branch)
         git checkout stable/$branch_basename
