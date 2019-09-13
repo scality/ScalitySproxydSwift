@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install --yes \
     python-pip \
     python-tox \
     locales \
+    liberasurecode-dev \
   && pip install coverage \
   && git clone https://github.com/openstack/liberasurecode.git \
   && cd liberasurecode \

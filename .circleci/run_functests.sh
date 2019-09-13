@@ -3,6 +3,8 @@
 set -e
 set -x
 
+SUPPORTED_BRANCHES="stable/ocata stable/pike stable/queens"
+
 restart_swift()
 {
     swift-init --run-dir=/opt/stack/data/swift/run all stop
@@ -25,8 +27,9 @@ main()
     rm -f /etc/boto.cfg
 
     # Create the tests results folder
-    mkdir /tmp/ScalitySproxydSwift/func-tests-results
+    mkdir -p /tmp/ScalitySproxydSwift/func-tests-results
 
+    export UPPER_CONSTRAINTS_FILE="/opt/stack/requirements/upper-constraints.txt"
     # Run functional tests on master branch
     tox -v -epy27 ./test/functional -- --with-xunit
 
@@ -35,16 +38,17 @@ main()
 
     # And then on each stable/* branch
     git fetch
-    for branch in $(git branch -a | grep '/stable/')
+    # for branch in $(git branch -a | grep '/stable/')
+    for branch in $SUPPORTED_BRANCHES
     do
-	branch_basename=$(basename $branch)
-	git checkout stable/$branch_basename
-	python setup.py install
-	restart_swift
-	tox -v -epy27 ./test/functional -- --with-xunit
+        branch_basename=$(basename $branch)
+        git checkout stable/$branch_basename
+        python setup.py install
+        restart_swift
+        tox -v -epy27 ./test/functional -- --with-xunit
 
-	# Collect results
-	mv nosetests.xml /tmp/ScalitySproxydSwift/func-tests-results/nosetests-$branch_basename.xml
+        # Collect results
+        mv nosetests.xml /tmp/ScalitySproxydSwift/func-tests-results/nosetests-$branch_basename.xml
     done
 
     # Collect logfiles
