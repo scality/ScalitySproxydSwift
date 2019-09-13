@@ -18,5 +18,5 @@ RUN cd /tmp \
   && cd ScalitySproxydSwift-swift-scality-backend-0.4.4 \
   && python setup.py install
 
-USER stack
+USER swift
 
