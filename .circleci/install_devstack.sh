@@ -5,9 +5,13 @@ set -e
 add_scality_apt_repo()
 {
     add-apt-repository multiverse
-    mkdir -p /etc/apt/sources.list.d
-    echo "deb [ arch=amd64 ] https://${SCAL_USERNAME}:${SCAL_PASSWORD}@${SCAL_URL} trusty scality/ring scality/thirdparty" \
-	 > /etc/apt/sources.list.d/scality.list
+    mkdir -p /etc/apt/sources.list.d /etc/apt/auth.conf.d
+    curl -o /tmp/scality.pub https://${SCAL_USERNAME}:${SCAL_PASSWORD}@${SCAL_URL}/centos/7/x86_64/scality.pub
+    apt-key add /tmp/scality.pub
+    echo "deb [ arch=amd64 ] https://${SCAL_URL}/ubuntu trusty scality/ring scality/thirdparty" \
+	       > /etc/apt/sources.list.d/scality.list
+    echo "machine ${SCAL_URL} login ${SCAL_USERNAME} password ${SCAL_PASSWORD}" \
+         > /etc/apt/auth.conf.d/scality.conf
     apt-get update
 }
 
