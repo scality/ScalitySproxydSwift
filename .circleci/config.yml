@@ -61,18 +61,19 @@ jobs:
 
 
   func-tests:
-    machine: true
+    machine:
+      image: ubuntu-1604:202007-01
     working_directory: /tmp/ScalitySproxydSwift
     steps:
       - checkout
 
       - run:
-         name: Install Swift from master branch, our connector and a local sproxyd
-         command: sudo -E -H .circleci/install_devstack.sh
+          name: Install Swift from master branch, our connector and a local sproxyd
+          command: sudo -E -H .circleci/install_devstack.sh
 
       - run:
-         name: Run the tests with tox
-         command: sudo -E -H .circleci/run_functests.sh
+          name: Run the tests with tox
+          command: sudo -E -H .circleci/run_functests.sh
 
       - store_test_results:
           path: func-tests-results
