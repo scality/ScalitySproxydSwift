@@ -66,16 +66,13 @@ install_required_packages()
 		   xfsprogs \
 		   memcached \
 		   liberasurecode-dev
-
-    # >= 2.9.1 is failing
-    pip install tox==2.3.1
 }
 
 install_required_deps()
 {
     install_required_packages
     install_liberasurecode_from_source
-    install_pyeclib_from_source
+    # install_pyeclib_from_source
 }
 
 create_sudoer_user_scality()
@@ -97,7 +94,6 @@ install_systemd_unit_files()
 {
     install_unit_file apache2
     install_unit_file mysql
-    install_unit_file memcached
 
     systemctl daemon-reload
 }
@@ -115,7 +111,7 @@ install_devstack()
 set -x
 set -e
 
-git clone -b stable/ocata https://git.openstack.org/openstack-dev/devstack
+git clone -b stable/queens https://git.openstack.org/openstack-dev/devstack
 mv /tmp/local.conf /tmp/devstack/
 pushd /tmp/devstack
 ./stack.sh
@@ -185,7 +181,7 @@ main()
 
     create_sudoer_user_scality
 
-    install_systemd_unit_files
+    # install_systemd_unit_files
 
     install_devstack
 
@@ -222,6 +218,13 @@ main()
 
     # Start Swift
     swift-init --run-dir=/opt/stack/data/swift/run all start || true
+
+    # Reinstall here fix liberasure with linking issues if we dont use source version
+    #install_required_deps
+
+    # Fix ERROR: Invalid Storage Policy Configuration in /etc/swift/swift.conf (Invalid option 'aliases' in storage-policy section 'storage-policy:0')
+    # but we dont know consequences on tests
+    #sed -Ei 's/^(aliases =)/# \1/' /etc/swift/swift.conf
 }
 
 main
