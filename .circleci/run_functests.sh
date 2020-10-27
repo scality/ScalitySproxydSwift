@@ -36,7 +36,11 @@ main()
 
     # And then on each stable/* branch
     git fetch
-    for branch in $(git branch -a | grep '/stable/')
+    # for branch in $(git branch -a | grep '/stable/')
+    # BRANCHES_EXCLUSIONS='ocata|victoria'
+    # BRANCHES="queens rocky $(git branch -a | grep '/stable/' | grep -Ev $BRANCHES_EXCLUSIONS)"
+    BRANCHES="queens rocky $(git branch -a | grep '/stable/' | grep -Ev 'ocata')"
+    for branch in $BRANCHES
     do
         branch_basename=$(basename $branch)
         git checkout stable/$branch_basename
