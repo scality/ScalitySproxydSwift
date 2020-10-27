@@ -1,0 +1,19 @@
+ARG SCAL_USERNAME
+ARG SCAL_PASSWORD
+ARG SCAL_URL
+FROM centos:7
+ARG SCAL_USERNAME
+ARG SCAL_PASSWORD
+ARG SCAL_URL
+
+EXPOSE 81
+
+RUN yum install -y epel-release
+
+RUN echo -e "[scality-base]\nname=Scality\ngpgcheck=0\nbaseurl=https://${SCAL_USERNAME}:${SCAL_PASSWORD}@${SCAL_URL}/centos/7/x86_64/" > /etc/yum.repos.d/scality.repo \
+  && yum install -y python3-requests scality-sproxyd scality-sproxyd-httpd 
+
+COPY sproxyd.conf /etc
+COPY scality-sd.conf /etc/apache2/sites-enabled/
+
+CMD service apache2 restart && sproxyd -c /etc/sproxyd.conf -dwl

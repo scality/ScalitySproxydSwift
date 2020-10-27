@@ -155,18 +155,6 @@ install_swift_scality_backend()
 
 install_local_sproxyd()
 {
-    apt-get install --yes --allow-unauthenticated \
-	    python3-requests \
-	    scality-sproxyd \
-	    scality-sproxyd-apache2
-
-    cp /tmp/ScalitySproxydSwift/.circleci/sproxyd.conf /etc/
-
-    # Copy the apache sproxyd config file with an extra specific directive to
-    # prevent apache from truncating or rejecting the metadata above a certain
-    # default size, considered too small by Swift
-    cp /tmp/ScalitySproxydSwift/.circleci/scality-sd.conf /etc/apache2/sites-enabled/
-
     # We create a 6 gigabytes file so that sproxyd can store its data in it.
     # 6G was chosen so that it is fairly above the Swift file size limit of 5G,
     # which is tested in the functional tests suite
@@ -180,6 +168,11 @@ install_local_sproxyd()
 
     # Mount it as a loop device to simulate a disk
     mount -o loop /sproxyd-file /var/tmp/local-sproxyd-file/
+
+    # Run sproxyd in docker container to have a Trusty environment
+    pushd /tmp/ScalitySproxydSwift/.circleci/
+    docker build -t sproxyd --build-arg SCAL_USERNAME=${SCAL_USERNAME} --build-arg SCAL_PASSWORD=${SCAL_PASSWORD} --build-arg SCAL_URL=${SCAL_URL}  ./sproxyd_container
+    popd
 }
 
 main()
@@ -213,10 +206,13 @@ main()
 
     if pgrep -x "sproxyd" > /dev/null
     then
-	killall -KILL sproxyd
+	      killall -KILL sproxyd
     fi
-    systemctl restart apache2
-    /usr/bin/sproxyd -c /etc/sproxyd.conf
+    #systemctl restart apache2
+    # /usr/bin/sproxyd -c /etc/sproxyd.conf
+    docker run -d --privileged -p 81:81 \
+           --mount "type=bind,src=/var/tmp/local-sproxyd-file/,dst=/var/tmp/local-sproxyd-file/" \
+           sproxyd
 
     # Kill processes listening on Swift ports
     fuser -k -n tcp 8080
